@@ -1,0 +1,38 @@
+MATLAB
+--------------------------------------
+mplay('Second.avi');
+
+
+[mov] = aviread('Second.avi');
+
+mov = 
+1x860 struct array with fields:
+    cdata
+    colormap
+    
+mov(1) = 
+    cdata: [240x320x3 uint8]
+    colormap: []
+    
+860 frames @ 240H x 320W
+
+
+image(mov(100).cdata)
+
+imshow(mov(1).cdata);
+impixelinfo();
+[x,y] = ginput(1); % one point
+
+imtool(mov(1).cdata);
+
+roicolor - Select region of interest (ROI) based on color
+
+imshow(mov(1).cdata);
+[mask,xi,yi] = roipoly;
+
+
+Students.avi (3214 frames)
+-------------------------------------
+1 - 1460        walk across, scatter, and chat
+1461 - 3214     walk in, split into two groups, wave hands
+

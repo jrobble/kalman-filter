@@ -1,0 +1,33 @@
+function [] = test_students()
+
+% mplay('Students.avi'); % works
+% [mov] = aviread('Students.avi', [1:200]);
+% img = mov(100).cdata;
+% imshow(img);
+
+% aviinfo('Students.avi')
+[video, audio] = mmread('Students.avi',[1:200]);
+mplay(video.frames);
+
+
+function [] = split(splitframe)
+
+    splitframe = 1461; % first frame of second half
+    numframes = 3214;
+    % newmov1 = avifile('Students_1.avi', ...
+    %    'compression', 'Cinepak','fps',29.9700);
+    [video, audio] = mmread('Students.avi',1:(1461-1));
+
+    oldmov = aviread('Students.avi',1:splitframe);
+    for i = 1:splitframe
+       frame = oldmov(i);
+       newmov1 = addframe(newmov1,frame);
+    end
+
+    oldmov = aviread('Students.avi',(splitframe+1):numframes);
+    for i = 1:(numframes-splitframe)
+       frame = oldmov(i);
+       newmov2 = addframe(newmov2,frame);
+    end
+
+    clear all;
