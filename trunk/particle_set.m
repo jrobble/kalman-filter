@@ -14,7 +14,7 @@ classdef particle_set
         origscaley = 15; % approx. max Brownian particle y movement (pos/neg)
 
         winrad = 20; % radius of small circular window around best particle in "robust mean" method
-        numpts = 100; % [20][200] number of particles in system
+        orignumpts = 100; % [20][200] number of particles in system
         
         % method used to determine next target pt
         % 1. "weighted mean" method 
@@ -46,17 +46,22 @@ classdef particle_set
         target = [];
         q = [];
         qccenters = [];
+        oldnumpts = [];
+        numpts = [];
         scalex = [];
         scaley = [];
         imgheight = [];
         imgwidth = [];
-        islost = 1;
+        islost = [];
     end
     
     methods
         
         % constructor must be able to handle the no input case for object array pre-allocation
         function obj = particle_set(steps)
+            obj.islost = 1; % initially lost
+            obj.numpts = obj.orignumpts;
+            obj.oldnumpts = obj.numpts;
             obj.scalex = obj.origscalex;
             obj.scaley = obj.origscaley;
             if nargin > 0
@@ -143,14 +148,27 @@ classdef particle_set
                 % fprintf(1,'Calculating particle color distribution, [%d,%d] ...\n',sk(i,1),sk(i,2)); % DEBUG
                 [py] = obj.get_color_distribution(obj.sk(i,:),img,obj.qccenters);
 
+                if isnan(py) % DEBUG
+                    obj.sk(i,:)
+                    error('py is NAN');
+                end
+                
                 % calculate Bhattacharyya coefficient (ro)
                 ro = sum(sqrt(py .* obj.q));
+                
+                if isnan(ro) % DEBUG
+                    error('ro is NAN');
+                end
 
                 % calculate probability
                 const = 1/(sqrt(2*pi*obj.var));
                 pow = -(1-ro)/(2*obj.var);
                 b = const*exp(pow);
                 obj.sk(i,3) = b;
+                
+                if isnan(b) % DEBUG
+                    error('b is NAN');
+                end
 
                 % calculate cumulative probability
                 c = sum(obj.sk(1:i,3));
@@ -223,43 +241,8 @@ classdef particle_set
                 obj.target(:) = obj.target(:) / normfactor;
                 % obj.target % DEBUG
             end
-
             
-            % select resample particles (can choose repeat particles)
-            % fprintf(1,'\nResample particles ...\n'); % DEBUG
-            sk0 = zeros(obj.numpts,size(obj.sk,2));
-            for i = 1:obj.numpts
-                r = rand(); % random num normally dist. in interval [0,1]
-                % find smallest particle cumulative density >= r
-                found = 0; j = 1;
-                while j <= obj.numpts && found == 0
-                   if obj.sk(j,4) >= r
-                      % r
-                      % h = plot(obj.sk(j,1),obj.sk(j,2),'w+'); % DEBUG
-                      % pause();
-                      % delete(h);
-                      found = 1;
-                   else
-                      j = j + 1;
-                   end
-                end
-                % if there are no good choices, choose a random particle 
-                if found == 0
-                   % obj.sk
-                   fprintf(1,'>> Possible loss of target. ');
-                   fprintf(1,'=> Arbitrary particle chosen for r: %d\n',r);
-                   j = randi(obj.numpts);
-                end
-                % set new particle parameters
-                sk0(i,1:4) = obj.sk(j,1:4); % particle inherits new location
-                sk0(i,5:8) = obj.sk(i,5:8); % particle maintains Brownian parameters (based on index) 
-                
-                % fprintf(1,'r: %d, sk0(%d): [%d,%d,%d,%d]\n', ...
-                %    r,i,sk0(i,1),sk0(i,2),sk0(i,3),sk0(i,4)); % DEBUG
-            end
-            % sk0 % DEBUG
-
-
+            
             % DEBUG - mark points (particles) before update rule
             %{
             xmin = min(sk0(:,1));
@@ -298,6 +281,8 @@ classdef particle_set
                     obj.scalex = obj.origscalex * 5;
                     obj.scaley = obj.origscaley * 5;
                     obj.targetmethod = 2; % use "best particle" method
+                    obj.oldnumpts = obj.numpts;
+                    % obj.numpts = obj.orignumpts;
                     obj.islost = 1;
                 end
             else
@@ -309,16 +294,60 @@ classdef particle_set
                     obj.scaley = obj.origscaley;
                     obj.targetmethod = 3; % use "robust mean" method
                     
+                    % might want to scan the whole image here...
                     % reset Brownian motion parameters ?
+                    % increase number of particles ?
+                    obj.oldnumpts = obj.numpts;
+                    % obj.numpts = 2 * obj.orignumpts;
                     obj.islost = 0;
                 end
             end
+
+            
+            % select resample particles (can choose repeat particles)
+            % fprintf(1,'\nResample particles ...\n'); % DEBUG
+            sk0 = zeros(obj.numpts,size(obj.sk,2));
+            for i = 1:obj.numpts
+                r = rand(); % random num normally dist. in interval [0,1]
+                % find smallest particle cumulative density >= r
+                found = 0; j = 1;
+                while j <= obj.oldnumpts && found == 0
+                   if obj.sk(j,4) >= r
+                      % r
+                      % h = plot(obj.sk(j,1),obj.sk(j,2),'w+'); % DEBUG
+                      % pause();
+                      % delete(h);
+                      found = 1;
+                   else
+                      j = j + 1;
+                   end
+                end
+                % if there are no good choices, choose a random particle 
+                if found == 0
+                   % obj.sk
+                   fprintf(1,'>> Possible loss of target. ');
+                   fprintf(1,'=> Arbitrary particle chosen for r: %d\n',r);
+                   j = randi(obj.oldnumpts);
+                end
+                % set new particle parameters
+                sk0(i,1:4) = obj.sk(j,1:4); % particle inherits new location
+                if i <= obj.oldnumpts
+                    sk0(i,5:8) = obj.sk(i,5:8); % particle maintains Brownian parameters (based on index)
+                else
+                    sk0(i,5:8) = obj.sk(randi(obj.oldnumpts),5:8); % if new particle, inherit random Brownian parameters
+                end
+                
+                % fprintf(1,'r: %d, sk0(%d): [%d,%d,%d,%d]\n', ...
+                %    r,i,sk0(i,1),sk0(i,2),sk0(i,3),sk0(i,4)); % DEBUG
+            end
+            % sk0 % DEBUG
             
 
             % spread the states according to the Brownian update rule
             sk1 = zeros(obj.numpts,size(obj.sk,2));
             for i = 1:obj.numpts
                 isvalid = 0;
+                attempts = 0;
                 while isvalid == 0
                     % attempt to update
                     sk1(i,5) = exp((-1/4) * (sk0(i,5) + 1.5*sk0(i,7)));
@@ -336,7 +365,17 @@ classdef particle_set
                     
                     % validate
                     isvalid = (sk1(i,1) > 0) && (sk1(i,1) <= obj.imgwidth) && ...
-                              (sk1(i,2) > 0) && (sk1(i,1) <= obj.imgheight);
+                              (sk1(i,2) > 0) && (sk1(i,2) <= obj.imgheight);
+                    attempts = attempts + 1;
+                    
+                    % after so many attempts, just choose a random pt
+                    if isvalid == 0 && attempts > 10
+                        fprintf(1,'>> Too many Brownian motion parameter update attempts. ');
+                        fprintf(1,'=> Choose random coordinates.\n');
+                        sk1(i,1) = randi(obj.imgwidth);
+                        sk1(i,2) = randi(obj.imgheight);
+                        isvalid = 1;
+                    end
                 end
             end
 
@@ -410,10 +449,11 @@ classdef particle_set
                         e = abs(e)/obj.rad;
 
                         k = 0;
-                        if e < 1 % should always be true
+                        if e < 1 % should always be true unless random coordinate chosen
                             k = 1-e^2;  
                         else
-                            error('e >= 1, %d >= 1',e);
+                            % e % DEBUG
+                            % error('e >= 1, %d >= 1',e);
                         end
 
                         % get color histogram profile

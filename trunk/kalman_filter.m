@@ -3,7 +3,7 @@ function [] = kalman_filter(movfilestr)
 
 %parameters
 steps = -1; % [50] number of frames to track, [-1] => all
-startframe = 1; % [380] starting frame
+startframe = 30; % [380] [30] starting frame
 framenum = startframe;
 
 % get user input
@@ -17,7 +17,7 @@ if steps ~= -1
    mov = aviread(movfilestr,startframe:(startframe+steps-1));
 else
    mov = aviread(movfilestr);
-   steps = size(mov,2);
+   steps = size(mov,2)-startframe+1;
 end
 
 img = mov(framenum).cdata;
