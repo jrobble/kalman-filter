@@ -8,19 +8,19 @@ classdef particle_set
         numbins = 3; % [3] number of histogram bins to use for each color component
         usehsv = 0; % [1]
 
-        rad = 5;  % [5] radius of circular ROI
+        rad = 15;  % [5] radius of circular ROI
         var = 0.2; % [0.02] variance of Gaussian used to calculate probabilities (lower is more selective)
-        origscalex = 15; % approx. max Brownian particle x movement (pos/neg)
-        origscaley = 15; % approx. max Brownian particle y movement (pos/neg)
+        origscalex = 20; % [15] approx. max Brownian particle x movement (pos/neg)
+        origscaley = 20; % [15] approx. max Brownian particle y movement (pos/neg)
 
-        winrad = 20; % radius of small circular window around best particle in "robust mean" method
-        orignumpts = 100; % [20][200] number of particles in system
+        winrad = 15; % radius of small circular window around best particle in "robust mean" method
+        orignumpts = 200; % [20][200][100] number of particles in system
         
         % method used to determine next target pt
         % 1. "weighted mean" method 
         % 2. "best particle" method
         % 3. "robust mean" method
-        targetmethod = 3;
+        targetmethod = 2; % [3]
 
         % USC helicopter video:
         % frame 350 - helicopter low in tree before occlusion by man walking in front
@@ -36,6 +36,9 @@ classdef particle_set
 
         % ACV student video:
         % frame 200 - Brian standing
+        % Students_1.avi 30  - Brian walking in front of Natasha
+        % Students_2.avi 100 - Natasha walking in door
+        % Students_2.avi 125 - Natasha walking across
 
         % tracking variables
         graphics = []; % set of graphic handles
@@ -92,6 +95,7 @@ classdef particle_set
             % select uniformly distributed random points w/in circle around target point
             fprintf(1,'Select ROI. Target point is the center.\n\n');
             [circhandle,circcenter,circrad]=draw_circle([],[],[],[],img);
+            obj.rad = circrad; % DEBUG
             
             obj.target = circcenter;
             x = zeros(1,obj.numpts);
@@ -153,8 +157,24 @@ classdef particle_set
                     error('py is NAN');
                 end
                 
+                % DEBUG
+                %{
+                fprintf(1,'obj.q: [ ');
+                for j = 1:size(obj.q,2)
+                    fprintf(1,'%1.2f ',obj.q(j));
+                end
+                fprintf(1,']\n');
+                fprintf(1,'   py: [ ');
+                for j = 1:size(py,2)
+                    fprintf(1,'%1.2f ',py(j));
+                end
+                fprintf(1,']\n');
+                %}
+                ro = 1 - sum(abs(py - obj.q))/2; % absolute error
+                
                 % calculate Bhattacharyya coefficient (ro)
-                ro = sum(sqrt(py .* obj.q));
+                % ro = sum(sqrt(py .* obj.q));
+                % fprintf(1,'rho: %d\n',ro);
                 
                 if isnan(ro) % DEBUG
                     error('ro is NAN');
@@ -292,7 +312,7 @@ classdef particle_set
                     fprintf(1,'=> Use smaller particle cloud and robust mean method.\n');
                     obj.scalex = obj.origscalex;
                     obj.scaley = obj.origscaley;
-                    obj.targetmethod = 3; % use "robust mean" method
+                    obj.targetmethod = 2; % [3] use "robust mean" method
                     
                     % might want to scan the whole image here...
                     % reset Brownian motion parameters ?
@@ -305,7 +325,7 @@ classdef particle_set
 
             
             % select resample particles (can choose repeat particles)
-            % fprintf(1,'\nResample particles ...\n'); % DEBUG
+            fprintf(1,'\nResample particles ...\n'); % DEBUG
             sk0 = zeros(obj.numpts,size(obj.sk,2));
             for i = 1:obj.numpts
                 r = rand(); % random num normally dist. in interval [0,1]
@@ -337,13 +357,15 @@ classdef particle_set
                     sk0(i,5:8) = obj.sk(randi(obj.oldnumpts),5:8); % if new particle, inherit random Brownian parameters
                 end
                 
-                % fprintf(1,'r: %d, sk0(%d): [%d,%d,%d,%d]\n', ...
-                %    r,i,sk0(i,1),sk0(i,2),sk0(i,3),sk0(i,4)); % DEBUG
+                fprintf(1,'r: %d, sk0(%d): [%d,%d,%d,%d]\n', ...
+                    r,i,sk0(i,1),sk0(i,2),sk0(i,3),sk0(i,4)); % DEBUG
             end
-            % sk0 % DEBUG
+            sk0 % DEBUG
             
 
             % spread the states according to the Brownian update rule
+            % sk1 = obj.sk; % DEBUG
+            
             sk1 = zeros(obj.numpts,size(obj.sk,2));
             for i = 1:obj.numpts
                 isvalid = 0;
@@ -378,6 +400,7 @@ classdef particle_set
                     end
                 end
             end
+            
 
             % sk1 % DEBUG
             obj.oldsk = obj.sk;
@@ -414,7 +437,6 @@ classdef particle_set
                     for x = xmin:xmax
                         % determine if pixel within circle ROI
                         if (x-centerx)^2+(y-centery)^2 <= obj.rad^2
-                            % subimg(y,x,:) = img(y,x,:); % DEBUG
                             innerpix(count,:) = img(y,x,:);
                             count = count + 1;
                         end
@@ -424,9 +446,6 @@ classdef particle_set
                 count = count - 1;
                 innerpix = innerpix(1:count,:);
                 % fprintf(1,'innerpix: %d\n',count); % DEBUG
-
-                % figure(2); % DEBUG
-                % imshow(subimg); %DEBUG
 
                 % calculate color histogram centers for ROI
                 [rdist,rcenters] = hist(innerpix(:,1),obj.numbins);
@@ -501,7 +520,13 @@ classdef particle_set
             [mindiffr,posr] = min(abs(p(1)-ccenters(1,:)));
             [mindiffg,posg] = min(abs(p(2)-ccenters(2,:)));
             [mindiffb,posb] = min(abs(p(3)-ccenters(3,:)));
-            cprofile = [posr-1,posg-1,posb-1];
+            
+            if obj.usehsv == 1
+                cprofile = [posr-1,posg-1,0];
+            else
+                cprofile = [posr-1,posg-1,posb-1];
+            end
+            
             % cprofile % DEBUG
         end
         
