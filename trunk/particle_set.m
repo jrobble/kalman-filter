@@ -5,7 +5,7 @@ classdef particle_set
     
     properties
         % parameters
-        numbins = 3; % [3] number of histogram bins to use for each color component
+        numbins = 10; % [3] number of histogram bins to use for each color component
         usehsv = 0; % [1]
 
         rad = 15;  % [5] radius of circular ROI
@@ -14,13 +14,13 @@ classdef particle_set
         origscaley = 20; % [15] approx. max Brownian particle y movement (pos/neg)
 
         winrad = 15; % radius of small circular window around best particle in "robust mean" method
-        orignumpts = 200; % [20][200][100] number of particles in system
+        orignumpts = 30; % [20][200][100] number of particles in system
         
         % method used to determine next target pt
         % 1. "weighted mean" method 
         % 2. "best particle" method
         % 3. "robust mean" method
-        targetmethod = 2; % [3]
+        targetmethod = 3; % [3]
 
         % USC helicopter video:
         % frame 350 - helicopter low in tree before occlusion by man walking in front
@@ -96,6 +96,7 @@ classdef particle_set
             fprintf(1,'Select ROI. Target point is the center.\n\n');
             [circhandle,circcenter,circrad]=draw_circle([],[],[],[],img);
             obj.rad = circrad; % DEBUG
+            obj.winrad = circrad; % DEBUG
             
             obj.target = circcenter;
             x = zeros(1,obj.numpts);
@@ -158,7 +159,7 @@ classdef particle_set
                 end
                 
                 % DEBUG
-                %{
+                
                 fprintf(1,'obj.q: [ ');
                 for j = 1:size(obj.q,2)
                     fprintf(1,'%1.2f ',obj.q(j));
@@ -169,12 +170,12 @@ classdef particle_set
                     fprintf(1,'%1.2f ',py(j));
                 end
                 fprintf(1,']\n');
-                %}
-                ro = 1 - sum(abs(py - obj.q))/2; % absolute error
+                
+                %ro = 1 - sum(abs(py - obj.q))/2; % absolute error
                 
                 % calculate Bhattacharyya coefficient (ro)
-                % ro = sum(sqrt(py .* obj.q));
-                % fprintf(1,'rho: %d\n',ro);
+                ro = sum(sqrt(py .* obj.q));
+                fprintf(1,'rho: %d\n',ro);
                 
                 if isnan(ro) % DEBUG
                     error('ro is NAN');
@@ -195,12 +196,12 @@ classdef particle_set
                 obj.sk(i,4) = c;
                 
                 % DEBUG
-                % h = plot(obj.sk(i,1),obj.sk(i,2),'w+');
-                % g = obj.plot_circle(obj.rad,obj.sk(i,1),obj.sk(i,2));
+                h = plot(obj.sk(i,1),obj.sk(i,2),'w+');
+                g = obj.plot_circle(obj.rad,obj.sk(i,1),obj.sk(i,2));
                 % obj.sk(i,3)
-                % pause();
-                % delete(h); 
-                % delete(g);
+                pause();
+                delete(h); 
+                delete(g);
                 % tmpgraphics(end+1) = h;
             end
             %pause();
@@ -262,6 +263,9 @@ classdef particle_set
                 % obj.target % DEBUG
             end
             
+            oldq = obj.q;
+            [obj.q,obj.qccenters] = obj.get_color_distribution(obj.target,img); % DEBUG - update new target color profile
+            obj.q = (oldq + obj.q) / 2;
             
             % DEBUG - mark points (particles) before update rule
             %{
@@ -312,7 +316,7 @@ classdef particle_set
                     fprintf(1,'=> Use smaller particle cloud and robust mean method.\n');
                     obj.scalex = obj.origscalex;
                     obj.scaley = obj.origscaley;
-                    obj.targetmethod = 2; % [3] use "robust mean" method
+                    obj.targetmethod = 3; % [3] use "robust mean" method
                     
                     % might want to scan the whole image here...
                     % reset Brownian motion parameters ?
@@ -430,6 +434,8 @@ classdef particle_set
             if nargin < 4
                 fprintf(1,'>> Calculate color histogram centers.\n'); % DEBUG
                 
+                % OLD WAY - use local ROI to determine centers
+                %{
                 area = floor(pi*obj.rad^2);
                 innerpix = zeros(area,3);
                 count = 1;
@@ -451,6 +457,12 @@ classdef particle_set
                 [rdist,rcenters] = hist(innerpix(:,1),obj.numbins);
                 [gdist,gcenters] = hist(innerpix(:,2),obj.numbins);
                 [bdist,bcenters] = hist(innerpix(:,3),obj.numbins);
+                ccenters = [rcenters;gcenters;bcenters];
+                %}
+                
+                [rdist,rcenters] = hist(0:255,obj.numbins);
+                [gdist,gcenters] = hist(0:255,obj.numbins);
+                [bdist,bcenters] = hist(0:255,obj.numbins);
                 ccenters = [rcenters;gcenters;bcenters];
             end
 
