@@ -14,7 +14,7 @@ classdef particle_set
         origscaley = 20; % [15] approx. max Brownian particle y movement (pos/neg)
 
         winrad = 15; % radius of small circular window around best particle in "robust mean" method
-        orignumpts = 10; % [20][200][100] number of particles in system
+        orignumpts = 200; % [20][200][100] number of particles in system
         
         % method used to determine next target pt
         % 1. "weighted mean" method 
@@ -36,8 +36,9 @@ classdef particle_set
 
         % ACV student video:
         % frame 200 - Brian standing
-        % Students_1.avi 30 - Brian walking in front of Natashia
-        % Students_2.avi 30
+        % Students_1.avi 30  - Brian walking in front of Natasha
+        % Students_2.avi 100 - Natasha walking in door
+        % Students_2.avi 125 - Natasha walking across
 
         % tracking variables
         graphics = []; % set of graphic handles
@@ -94,6 +95,7 @@ classdef particle_set
             % select uniformly distributed random points w/in circle around target point
             fprintf(1,'Select ROI. Target point is the center.\n\n');
             [circhandle,circcenter,circrad]=draw_circle([],[],[],[],img);
+            obj.rad = circrad; % DEBUG
             
             obj.target = circcenter;
             x = zeros(1,obj.numpts);
@@ -156,19 +158,23 @@ classdef particle_set
                 end
                 
                 % DEBUG
+                %{
                 fprintf(1,'obj.q: [ ');
                 for j = 1:size(obj.q,2)
-                    fprintf(1,'%1.3f ',obj.q(j));
+                    fprintf(1,'%1.2f ',obj.q(j));
                 end
                 fprintf(1,']\n');
-                fprintf(1,'obj.q: [ ');
-                for j = 1:size(obj.q,2)
-                    fprintf(1,'%1.3f ',obj.q(j));
+                fprintf(1,'   py: [ ');
+                for j = 1:size(py,2)
+                    fprintf(1,'%1.2f ',py(j));
                 end
                 fprintf(1,']\n');
+                %}
+                ro = 1 - sum(abs(py - obj.q))/2; % absolute error
                 
                 % calculate Bhattacharyya coefficient (ro)
-                ro = sum(sqrt(py .* obj.q));
+                % ro = sum(sqrt(py .* obj.q));
+                % fprintf(1,'rho: %d\n',ro);
                 
                 if isnan(ro) % DEBUG
                     error('ro is NAN');
@@ -189,12 +195,12 @@ classdef particle_set
                 obj.sk(i,4) = c;
                 
                 % DEBUG
-                h = plot(obj.sk(i,1),obj.sk(i,2),'w+');
-                g = obj.plot_circle(obj.rad,obj.sk(i,1),obj.sk(i,2));
-                obj.sk(i,3)
-                pause();
-                delete(h); 
-                delete(g);
+                % h = plot(obj.sk(i,1),obj.sk(i,2),'w+');
+                % g = obj.plot_circle(obj.rad,obj.sk(i,1),obj.sk(i,2));
+                % obj.sk(i,3)
+                % pause();
+                % delete(h); 
+                % delete(g);
                 % tmpgraphics(end+1) = h;
             end
             %pause();
@@ -327,10 +333,10 @@ classdef particle_set
                 found = 0; j = 1;
                 while j <= obj.oldnumpts && found == 0
                    if obj.sk(j,4) >= r
-                      r
-                      h = plot(obj.sk(j,1),obj.sk(j,2),'w+'); % DEBUG
-                      pause();
-                      delete(h);
+                      % r
+                      % h = plot(obj.sk(j,1),obj.sk(j,2),'w+'); % DEBUG
+                      % pause();
+                      % delete(h);
                       found = 1;
                    else
                       j = j + 1;
@@ -424,6 +430,8 @@ classdef particle_set
             if nargin < 4
                 fprintf(1,'>> Calculate color histogram centers.\n'); % DEBUG
                 
+                % OLD WAY - use local ROI to determine centers
+                %{
                 area = floor(pi*obj.rad^2);
                 innerpix = zeros(area,3);
                 count = 1;
@@ -446,6 +454,9 @@ classdef particle_set
                 [gdist,gcenters] = hist(innerpix(:,2),obj.numbins);
                 [bdist,bcenters] = hist(innerpix(:,3),obj.numbins);
                 ccenters = [rcenters;gcenters;bcenters];
+                %}
+                
+                
             end
 
             % calculate color distribution at location y w/in the ROI 
@@ -514,7 +525,13 @@ classdef particle_set
             [mindiffr,posr] = min(abs(p(1)-ccenters(1,:)));
             [mindiffg,posg] = min(abs(p(2)-ccenters(2,:)));
             [mindiffb,posb] = min(abs(p(3)-ccenters(3,:)));
-            cprofile = [posr-1,posg-1,posb-1];
+            
+            if obj.usehsv == 1
+                cprofile = [posr-1,posg-1,0];
+            else
+                cprofile = [posr-1,posg-1,posb-1];
+            end
+            
             % cprofile % DEBUG
         end
         
