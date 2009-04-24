@@ -3,8 +3,9 @@ function [] = kalman_filter(movfilestr)
 
 %parameters
 steps = -1; % [50] number of frames to track, [-1] => all
-startframe = 30; % [380] [30] starting frame
+startframe = 125; % [380] [30] starting frame
 framenum = startframe;
+showhsv = 0;
 
 % get user input
 numsets = input('\nEnter number of particle sets: ');
@@ -20,7 +21,11 @@ else
    steps = size(mov,2)-startframe+1;
 end
 
-img = mov(framenum).cdata;
+if showhsv == 1
+    img = rgb2hsv(mov(framenum).cdata);
+else
+    img = mov(framenum).cdata;
+end
 
 psets(numsets) = particle_set;
 for i = 1:numsets
@@ -37,7 +42,12 @@ for s = 1:steps
     
     % show current image
     img = mov(framenum).cdata;
-    set(imgh,'CData',img);
+    
+    if showhsv == 1
+        set(imgh,'CData',rgb2hsv(img));
+    else
+        set(imgh,'CData',img); 
+    end
     drawnow;
     
     % update all particle sets
