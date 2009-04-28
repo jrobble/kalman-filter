@@ -54,7 +54,7 @@ for s = 1:steps
     for i = 1:numsets
         psets(i) = psets(i).track_target_step(s,img);
     end
-    % pause(); % interactive
+    pause(); % interactive
     
     framenum = framenum + 1;
 end
