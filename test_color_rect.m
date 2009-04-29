@@ -16,6 +16,41 @@ end
 
 img = mov(framenum).cdata;
 
+% create integral image
+imgheight = size(img,1);
+imgwidth = size(img,2);
+dimg = double(img);
+iimg = dimg;
+
+for x = 1:imgwidth
+    prevs = [0,0,0];
+    for y = 1:imgheight
+        s(1) = prevs(1) + dimg(y,x,1);
+        s(2) = prevs(2) + dimg(y,x,2);
+        s(3) = prevs(3) + dimg(y,x,3);
+        if x-1 == 0
+            ii = s;
+        else
+            ii(1) = iimg(y,x-1,1);
+            ii(2) = iimg(y,x-1,2);
+            ii(3) = iimg(y,x-1,3);
+            ii = ii + s; 
+        end
+        iimg(y,x,1:3) = ii(1:3);
+        prevs = s;
+    end
+end
+
+figure; imshow(img); % DEBUG
+dimg(1:10,1:10,1)
+iimg(1:10,1:10,1)
+dimg(1:10,1:10,2)
+iimg(1:10,1:10,2)
+dimg(1:10,1:10,3)
+iimg(1:10,1:10,3)
+
+
+%{
 % get rectangular region
 % wait until user double-clicks region to resume
 figure;
@@ -120,3 +155,4 @@ for y = rpos(2):rpos(2)+rpos(4)-1
 end
 
 rcmodel = round(rcmodel / area);
+%}

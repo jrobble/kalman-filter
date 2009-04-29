@@ -30,7 +30,7 @@ classdef hybrid_particle_set
         
         % constructor must be able to handle the no input case for object array pre-allocation
         function obj = hybrid_particle_set(steps)
-            obj.islost = 1; % initially lost
+            obj.islost = false;
             obj.numpts = obj.orignumpts;
             obj.oldnumpts = obj.numpts;
             obj.xvar = obj.origxvar;
@@ -40,7 +40,7 @@ classdef hybrid_particle_set
             end
         end
         
-        function obj = initialize(obj,img)
+        function obj = initialize(obj,img,iimg)
 
             obj.imgheight = size(img,1);
             obj.imgwidth = size(img,2);
@@ -54,12 +54,12 @@ classdef hybrid_particle_set
             delete(h);
             
             % calculate target color model
-            obj.tk = obj.calc_quad_color_model(obj.tpos,img);
+            obj.tk = obj.calc_quad_color_model(obj.tpos,iimg);
         end
         
         
         % step through alg.
-        function obj = track_target_step(obj,step,img)
+        function [obj,islost] = track_target_step(obj,step,img,iimg)
         
             % determine particle positions
             dist = obj.gen_uniform_norm_dist(obj.numpts,obj.tpos(1:2),obj.xvar,obj.yvar);
@@ -78,21 +78,32 @@ classdef hybrid_particle_set
                 hpos(3:4) = obj.tpos(3:4); % same width and height
                 
                 % sum color component diffs for each region
-                hk = obj.calc_quad_color_model(hpos,img);
-                rho = (obj.tk-hk).^2;
-                rho = sum(rho,2);
-                rho = sum(rho);
-                rho = sqrt(rho);
-                p = exp(-(rho.^2)/obj.sd^2);
-                obj.sk(i,3) = p;
+                hk = obj.calc_quad_color_model(hpos,iimg);
+                
+                if isempty(hk) % particle out of bounds
+                   obj.sk(i,3) = -1; 
+                else
+                   rho = (obj.tk-hk).^2;
+                   rho = sum(rho,2);
+                   rho = sum(rho);
+                   rho = sqrt(rho);
+                   p = exp(-(rho.^2)/obj.sd^2);
+                   obj.sk(i,3) = p;  
+                end
                 
                 % fprintf(1,'pt: %d\n',i); obj.sk(i,3) % DEBUG
             end
-            
+
             % update target
             [bestp,bestindex] = max(obj.sk(:,3));
+            
+            bestp % DEBUG
+            if bestp < 0.05 % assume target lost
+                obj.islost = true;
+            end
+            
             obj.tpos(1:2) = obj.sk(bestindex,1:2);
-            obj.tk = obj.calc_quad_color_model(obj.tpos,img);
+            obj.tk = obj.calc_quad_color_model(obj.tpos,iimg);
             
             %{
             tmpgraphics = [];
@@ -393,43 +404,65 @@ classdef hybrid_particle_set
             
             % mark-up the image after determining points
             obj = obj.mark_up(step);
-
+            islost = obj.islost;
         end
         
         
-        function [cmodel] = calc_quad_color_model(obj,pos,img)
+        function [cmodel] = calc_quad_color_model(obj,pos,iimg)
             % divide into equal-sized quadrants
             width  = round(pos(3)/2);
             height = round(pos(4)/2);
+            area = width*height;
             pos = round(pos);
-
-            q1pos = [pos(1),pos(2),width,height];
-            q2pos = [pos(1)+width,pos(2),width,height];
-            q3pos = [pos(1),pos(2)+height,width,height];
-            q4pos = [pos(1)+width,pos(2)+height,width,height];
-
-            q1k = obj.calc_color_model_region(q1pos,img);
-            q2k = obj.calc_color_model_region(q2pos,img);
-            q3k = obj.calc_color_model_region(q3pos,img);
-            q4k = obj.calc_color_model_region(q4pos,img);
-            cmodel = [q1k;q2k;q3k;q4k];
-        end
-        
-        
-        function [rcmodel] = calc_color_model_region(obj,rpos,img)
-            area = rpos(3)*rpos(4);
-            rcmodel = zeros(1,3);
-            img = double(img);
-
-            for y = rpos(2):rpos(2)+rpos(4)-1
-                for x = rpos(1):rpos(1)+rpos(3)-1
-                  rcmodel(1) = rcmodel(1) + img(y,x,1);
-                  rcmodel(2) = rcmodel(2) + img(y,x,2);
-                  rcmodel(3) = rcmodel(3) + img(y,x,3);
-               end
+            
+            % determine if out of bounds
+            if pos(1) < 1 || pos(2) < 1 || ...
+               pos(1)+2*width-1 > obj.imgwidth || pos(2)+2*height-1 > obj.imgheight
+               cmodel = [];
+               return;
             end
+            
+            q1px = [pos(1)+width,   pos(2)+height];
+            q2px = [pos(1)+2*width, pos(2)+height];
+            q3px = [pos(1)+width,   pos(2)+2*height];
+            q4px = [pos(1)+2*width, pos(2)+2*height];
 
-            rcmodel = round(rcmodel / area);
+            q1sum = iimg(q1px(2)-1,q1px(1)-1,:);
+            q2sum = iimg(q2px(2)-1,q2px(1)-1,:);
+            q3sum = iimg(q3px(2)-1,q3px(1)-1,:);
+            q4sum = iimg(q4px(2)-1,q4px(1)-1,:);
+            
+            q1k = q1sum;
+            q2k = q2sum-q1sum;
+            q3k = q3sum-q1sum;
+            q4k = (q4sum+q1sum)-(q2sum+q3sum); % contains no excess
+            
+            % get rid of upper left data outside of ROI
+            if pos(1) > 1 % not along left side
+                q1k(1:3) = q1k(1:3) - iimg(pos(2)+height-1,pos(1)-1,1:3);
+                q3k(1:3) = q3k(1:3) - iimg(pos(2)+2*height-1,pos(1)-1,1:3);
+                q3k(1:3) = q3k(1:3) + iimg(pos(2)+height-1,pos(1)-1,1:3);
+            end
+            if pos(2) > 1 % not along upper side
+                q1k(1:3) = q1k(1:3) - iimg(pos(2)-1,pos(1)+width-1,1:3);
+                q2k(1:3) = q2k(1:3) - iimg(pos(2)-1,pos(1)+2*width-1,1:3);
+                q2k(1:3) = q2k(1:3) + iimg(pos(2)-1,pos(1)+width-1,1:3);
+            end
+            if pos(1) > 1 && pos(2) > 1
+                q1k(1:3) = q1k(1:3) + iimg(pos(2)-1,pos(1)-1,1:3);
+            end
+            
+            tmpq1k(1:3) = q1k(:,:,1:3)/area;
+            tmpq2k(1:3) = q2k(:,:,1:3)/area;
+            tmpq3k(1:3) = q3k(:,:,1:3)/area;
+            tmpq4k(1:3) = q4k(:,:,1:3)/area;
+            
+            q1k = tmpq1k;
+            q2k = tmpq2k;
+            q3k = tmpq3k;
+            q4k = tmpq4k;
+            
+            cmodel = [q1k;q2k;q3k;q4k];
         end
 
         
