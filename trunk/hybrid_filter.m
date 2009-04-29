@@ -3,7 +3,7 @@ function [] = hybrid_filter(movfilestr)
 
 %parameters
 steps = -1; % [50] number of frames to track, [-1] => all
-startframe = 125; % [380] [30] starting frame
+startframe = 650; % [125][200][650] starting frame
 framenum = startframe;
 
 % get user input
@@ -19,20 +19,22 @@ else
 end
 
 img = mov(framenum).cdata;
-
-psets(numsets) = hybrid_particle_set;
-
 imshow(img);
+
+iimg = create_integral_img(img);
+psets(numsets) = hybrid_particle_set;
 for i = 1:numsets
    psets(i) = hybrid_particle_set(steps);
-   psets(i) = psets(i).initialize(img);
+   psets(i) = psets(i).initialize(img,iimg);
 end
 
 pause();
 
 hold on;
 imgh = image(img);
-for s = 1:steps
+
+s = 0; islost = false;
+while s <= steps && ~islost
     fprintf('Step %d\n',s); % DEBUG
     
     % show current image
@@ -41,12 +43,41 @@ for s = 1:steps
     drawnow;
     
     % update all particle sets
+    iimg = create_integral_img(img);
     for i = 1:numsets
-        psets(i) = psets(i).track_target_step(s,img);
+        [psets(i),islost] = psets(i).track_target_step(s,img,iimg);
     end
     pause(); % interactive
     
     framenum = framenum + 1;
+    s = s + 1;
+end
+
+
+% create integral image
+function [iimg] = create_integral_img(img)
+imgheight = size(img,1);
+imgwidth = size(img,2);
+dimg = double(img);
+iimg = dimg;
+
+for x = 1:imgwidth
+    prevs = [0,0,0];
+    for y = 1:imgheight
+        s(1) = prevs(1) + dimg(y,x,1);
+        s(2) = prevs(2) + dimg(y,x,2);
+        s(3) = prevs(3) + dimg(y,x,3);
+        if x-1 == 0
+            ii = s;
+        else
+            ii(1) = iimg(y,x-1,1);
+            ii(2) = iimg(y,x-1,2);
+            ii(3) = iimg(y,x-1,3);
+            ii = ii + s; 
+        end
+        iimg(y,x,1:3) = ii(1:3);
+        prevs = s;
+    end
 end
 
     
