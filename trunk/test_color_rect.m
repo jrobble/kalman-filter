@@ -68,11 +68,17 @@ while(true)
 
     % sum color componenet diffs for each region
     hk = calc_quad_color_model(hpos,img);
-    rho = sqrt(sum((tk-hk).^2,2));
-
     sig = 10;
-    p = exp(-(rho.^2)/sig^2);
+    
+    % rho = sqrt(sum((tk-hk).^2,2));
 
+    rho = (tk-hk).^2;
+    rho = sum(rho,2);
+    rho = sum(rho);
+    rho = sqrt(rho);
+    
+    p = exp(-(rho.^2)/sig^2);
+    
     % DEBUG
     tk
     hk
