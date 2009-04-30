@@ -3,7 +3,7 @@ function [] = hybrid_filter(movfilestr)
 
 %parameters
 steps = -1; % [50] number of frames to track, [-1] => all
-startframe = 650; % [125][200][650] starting frame
+startframe = 1; % [125][200][690] starting frame
 framenum = startframe;
 
 % get user input
@@ -47,7 +47,7 @@ while s <= steps && ~islost
     for i = 1:numsets
         [psets(i),islost] = psets(i).track_target_step(s,img,iimg);
     end
-    pause(); % interactive
+    % pause(); % interactive
     
     framenum = framenum + 1;
     s = s + 1;
