@@ -3,7 +3,7 @@ function [] = hybrid_filter(movfilestr)
 
 %parameters
 steps = -1; % [50] number of frames to track, [-1] => all
-startframe = 1; % [125][200][690] starting frame
+startframe = 60; % [125][200][690] starting frame
 framenum = startframe;
 
 % get user input
