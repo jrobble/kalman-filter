@@ -98,7 +98,7 @@ classdef hybrid_particle_set
             [bestp,bestindex] = max(obj.sk(:,3));
             
             bestp % DEBUG
-            if bestp < 0.05 % assume target lost
+            if bestp < 0.01 % assume target lost
                 obj.islost = true;
             end
             
@@ -412,25 +412,44 @@ classdef hybrid_particle_set
             % divide into equal-sized quadrants
             width  = round(pos(3)/2);
             height = round(pos(4)/2);
-            area = width*height;
             pos = round(pos);
             
-            % determine if out of bounds
-            if pos(1) < 1 || pos(2) < 1 || ...
-               pos(1)+2*width-1 > obj.imgwidth || pos(2)+2*height-1 > obj.imgheight
-               cmodel = [];
-               return;
+            q1pos = [pos(1)+width,   pos(2)+height,   width, height];
+            q2pos = [pos(1)+2*width, pos(2)+height,   width, height];
+            q3pos = [pos(1)+width,   pos(2)+2*height, width, height];
+            q4pos = [pos(1)+2*width, pos(2)+2*height, width, height];
+            qpos = [q1pos;q2pos;q3pos;q4pos];
+            
+            % check region validity
+            for i = 1:size(qpos,2)
+                if qpos(i,1) < 2 || qpos(i,2) < 2 || ...
+                   qpos(i,1) - width > obj.imgwidth - 1 || qpos(i,2) - height > obj.imgheight - 1 
+                    cmodel = [];
+                    return;
+                end
+            end
+
+            % update region bounds if necessary
+            for i = 1:size(qpos,1)
+                if qpos(i,1) > obj.imgwidth
+                   qpos(i,2) = qpos(1,2) - (qpos(i,1) - obj.imgwidth); 
+                   qpos(i,1) = obj.imgwidth;
+                end
+                if qpos(i,2) > obj.imgheight
+                   qpos(i,4) = qpos(1,4) - (qpos(i,2) - obj.imgheight); 
+                   qpos(i,2) = obj.imgheight; 
+                end
             end
             
-            q1px = [pos(1)+width,   pos(2)+height];
-            q2px = [pos(1)+2*width, pos(2)+height];
-            q3px = [pos(1)+width,   pos(2)+2*height];
-            q4px = [pos(1)+2*width, pos(2)+2*height];
-
-            q1sum = iimg(q1px(2)-1,q1px(1)-1,:);
-            q2sum = iimg(q2px(2)-1,q2px(1)-1,:);
-            q3sum = iimg(q3px(2)-1,q3px(1)-1,:);
-            q4sum = iimg(q4px(2)-1,q4px(1)-1,:);
+            q1pos(1:4) = qpos(1,1:4);
+            q2pos(1:4) = qpos(2,1:4);
+            q3pos(1:4) = qpos(3,1:4);
+            q4pos(1:4) = qpos(4,1:4);
+            
+            q1sum = iimg(q1pos(2)-1,q1pos(1)-1,:);
+            q2sum = iimg(q2pos(2)-1,q2pos(1)-1,:);
+            q3sum = iimg(q3pos(2)-1,q3pos(1)-1,:);
+            q4sum = iimg(q4pos(2)-1,q4pos(1)-1,:);
             
             q1k = q1sum;
             q2k = q2sum-q1sum;
@@ -439,23 +458,23 @@ classdef hybrid_particle_set
             
             % get rid of upper left data outside of ROI
             if pos(1) > 1 % not along left side
-                q1k(1:3) = q1k(1:3) - iimg(pos(2)+height-1,pos(1)-1,1:3);
-                q3k(1:3) = q3k(1:3) - iimg(pos(2)+2*height-1,pos(1)-1,1:3);
-                q3k(1:3) = q3k(1:3) + iimg(pos(2)+height-1,pos(1)-1,1:3);
+                q1k(1:3) = q1k(1:3) - iimg(q1pos(2)-1,        q1pos(1)-q1pos(3), 1:3);
+                q3k(1:3) = q3k(1:3) - iimg(q3pos(2)-1,        q3pos(1)-q3pos(3), 1:3);
+                q3k(1:3) = q3k(1:3) + iimg(q3pos(2)-q3pos(4), q3pos(1)-q3pos(3), 1:3);
             end
             if pos(2) > 1 % not along upper side
-                q1k(1:3) = q1k(1:3) - iimg(pos(2)-1,pos(1)+width-1,1:3);
-                q2k(1:3) = q2k(1:3) - iimg(pos(2)-1,pos(1)+2*width-1,1:3);
-                q2k(1:3) = q2k(1:3) + iimg(pos(2)-1,pos(1)+width-1,1:3);
+                q1k(1:3) = q1k(1:3) - iimg(q1pos(2)-q1pos(4), q1pos(1)-1,        1:3);
+                q2k(1:3) = q2k(1:3) - iimg(q2pos(2)-q2pos(4), q2pos(1)-1,        1:3);
+                q2k(1:3) = q2k(1:3) + iimg(q2pos(2)-q2pos(4), q2pos(1)-q2pos(3), 1:3);
             end
             if pos(1) > 1 && pos(2) > 1
-                q1k(1:3) = q1k(1:3) + iimg(pos(2)-1,pos(1)-1,1:3);
+                q1k(1:3) = q1k(1:3) + iimg(q1pos(2)-q1pos(4),q1pos(1)-q1pos(3),1:3);
             end
             
-            tmpq1k(1:3) = q1k(:,:,1:3)/area;
-            tmpq2k(1:3) = q2k(:,:,1:3)/area;
-            tmpq3k(1:3) = q3k(:,:,1:3)/area;
-            tmpq4k(1:3) = q4k(:,:,1:3)/area;
+            tmpq1k(1:3) = q1k(:,:,1:3)/(q1pos(3)*q1pos(4));
+            tmpq2k(1:3) = q2k(:,:,1:3)/(q2pos(3)*q2pos(4));
+            tmpq3k(1:3) = q3k(:,:,1:3)/(q3pos(3)*q3pos(4));
+            tmpq4k(1:3) = q4k(:,:,1:3)/(q4pos(3)*q4pos(4));
             
             q1k = tmpq1k;
             q2k = tmpq2k;
