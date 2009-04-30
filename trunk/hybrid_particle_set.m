@@ -3,7 +3,8 @@
 classdef hybrid_particle_set
     
     properties
-        sd = 10; % standard deviation of probability calc.
+        colorsd = 10; % standard deviation of color probability
+        edgesd = 0.5; % standard deviation of edge probability
         origxvar = 10;
         origyvar = 10;
 
@@ -15,7 +16,6 @@ classdef hybrid_particle_set
         sk = [];
         oldsk = [];
         oldtpos = [];
-        target = [];
         oldnumpts = [];
         numpts = [];
         xvar = [];
@@ -24,7 +24,10 @@ classdef hybrid_particle_set
         imgwidth = [];
         islost = [];
         tpos = [];
-        tk = [];
+        tcolormodel = [];
+        tgxmodel = [];
+        tgymodel = [];
+        numedgebins = [];
     end
     
     methods
@@ -41,10 +44,11 @@ classdef hybrid_particle_set
             end
         end
         
-        function obj = initialize(obj,img,iimg)
+        function obj = initialize(obj,img,iimg,numedgebins,igxchans,igychans)
 
             obj.imgheight = size(img,1);
             obj.imgwidth = size(img,2);
+            obj.numedgebins = numedgebins;
 
             % select uniformly distributed random points w/in circle around target point
             fprintf(1,'Select ROI.\n\n');
@@ -54,59 +58,145 @@ classdef hybrid_particle_set
             obj.tpos = wait(h); % [x1,y1,width,height], [x1,y1] denotes upper left point
             delete(h);
             
-            % calculate target color model
-            obj.tk = obj.calc_quad_color_model(obj.tpos,iimg);
+            % calculate target model
+            obj.tcolormodel = obj.calc_quad_feature_model(obj.tpos,iimg,3);
+            obj.tgxmodel    = obj.calc_feature_model(obj.tpos,igxchans,obj.numedgebins);
+            obj.tgymodel    = obj.calc_feature_model(obj.tpos,igychans,obj.numedgebins);
         end
         
         
         % step through alg.
-        function [obj,islost] = track_target_step(obj,step,img,iimg)
+        function [obj,islost] = track_target_step(obj,step,img,iimg,igxchans,igychans)
         
             % determine particle positions
             dist = obj.gen_uniform_norm_dist(obj.numpts,obj.tpos(1:2),obj.xvar,obj.yvar);
             
-            % sk = [x,y,b,c] 
-            % [xcoord, ycoord, probability, cumulative probability]
-            obj.sk = zeros(obj.numpts,4);
+            % sk = [xcoord, ycoord, width, height, colorp, edgep]
+            obj.sk = zeros(obj.numpts,6);
             obj.sk(:,1) = dist(:,1);
             obj.sk(:,2) = dist(:,2);
-            obj.sk(:,5) = 1;
-            obj.sk(:,6) = 1;
             
-            % update particles
-            for i = 1:obj.numpts
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            % STAGE 1 - color rectangles
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            
+            % initialize candidate pool
+            candidates = 1:obj.numpts;
+            
+            % update candidates
+            for i = candidates
                 hpos(1:2) = obj.sk(i,1:2); % unique x and y
                 hpos(3:4) = obj.tpos(3:4); % same width and height
+                % hpos(3) = obj.tpos(3) + (obj.tpos(3) * (rand()/5 - 0.1));
+                % hpos(4) = obj.tpos(4) + (obj.tpos(4) * (rand()/5 - 0.1));
+                obj.sk(i,3:4) = hpos(3:4);
                 
-                % sum color component diffs for each region
-                hk = obj.calc_quad_color_model(hpos,iimg);
-                
-                if isempty(hk) % particle out of bounds
-                   obj.sk(i,3) = -1; 
-                else
-                   rho = (obj.tk-hk).^2;
+                % calculate color model
+                hcolormodel = obj.calc_quad_feature_model(hpos,iimg,3);
+
+                % handle color model
+                colorp = -1;
+                if ~isempty(hcolormodel) % particle not out of bounds
+                   tk = obj.tcolormodel;
+                   hk = hcolormodel;
+                   rho = (tk-hk).^2;
                    rho = sum(rho,2);
                    rho = sum(rho);
                    rho = sqrt(rho);
-                   p = exp(-(rho.^2)/obj.sd^2);
-                   obj.sk(i,3) = p;  
+                   colorp = exp(-(rho.^2)/obj.colorsd^2);
                 end
-                
-                % fprintf(1,'pt: %d\n',i); obj.sk(i,3) % DEBUG
+                obj.sk(i,5) = colorp;
             end
+            
+            % determine probability distribution
+            % keep top percentile and update candidates
+            [colorpdist,colorpcenters] = hist(obj.sk(candidates,5),20); 
+            [colorsortvals,colorsortindexes] = sort(obj.sk(candidates,5));
+            colorsortindexes = candidates(colorsortindexes);
+            
+            [topindexes] = find(colorpdist); 
+            topindex = topindexes(end);
+            
+            numcandidates = size(candidates,2);
+            candidates = colorsortindexes((numcandidates-colorpdist(topindex)+1):numcandidates);
+            % candidates % DEBUG
+            
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            % STAGE 2 - edge orientation
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            
+            % update candidates
+            for i = candidates
+                hgxmodel = obj.calc_feature_model(hpos,igxchans,obj.numedgebins);
+                hgymodel = obj.calc_feature_model(hpos,igychans,obj.numedgebins);
 
+                % handle edge orientation model
+                edgep = -1;
+                if ~isempty(hgxmodel) && ~isempty(hgymodel) % particle not out of bounds
+                    tk = [obj.tgxmodel,obj.tgymodel];
+                    hk = [hgxmodel,hgymodel];
+                    rho = (tk-hk).^2;
+                    rho = sum(rho,2);
+                    rho = sum(rho);
+                    rho = sqrt(rho);
+                    edgep = exp(-(rho.^2)/obj.edgesd^2);
+                end
+                obj.sk(i,6) = edgep;
+            end
+            
+            % determine probability distribution
+            % keep top percentile and update candidates
+            [edgepdist,edgepcenters] = hist(obj.sk(candidates,6),10); 
+            [edgesortvals,edgesortindexes] = sort(obj.sk(candidates,6));
+            edgesortindexes = candidates(edgesortindexes);
+            
+            [topindexes] = find(edgepdist); 
+            topindex = topindexes(end);
+            
+            numcandidates = size(candidates,2);
+            candidates = edgesortindexes((numcandidates-edgepdist(topindex)+1):numcandidates);
+            % candidates % DEBUG
+            % pause();
+            
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            % UPDATE TARGET
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            
             % update target
-            [bestp,bestindex] = max(obj.sk(:,3));
+            % [bestcolorp,bestcolorindex] = max(obj.sk(:,5));
+            % [bestedgep, bestedgeindex]  = max(obj.sk(:,6));
+            % bestindex = bestcolorindex;
+            % bestp = bestcolorp;
             
-            bestp % DEBUG
+            bestindex = candidates(end);
+            bestp = obj.sk(bestindex,5);
+            bestp
+            
+            %{
+            fprintf(1,'bestcolorp(%d): %5.5f bestedgep(%d): %5.5f\n', ...
+                bestcolorindex,bestcolorp,bestcolorindex,obj.sk(bestcolorindex,6));
+            fprintf(1,'bestedgep(%d): %5.5f bestcolorp(%d): %5.5f\n', ...
+                bestedgeindex,bestedgep,bestedgeindex,obj.sk(bestedgeindex,5));
+            %}
+            
+            %{
             if bestp < 0.01 % assume target lost
-                % obj.islost = true;
+                obj.islost = true;
             end
+            %}
             
-            obj.tpos(1:2) = obj.sk(bestindex,1:2);
-            newtk = obj.calc_quad_color_model(obj.tpos,iimg);
-            obj.tk = (bestp * newtk) + ((1-bestp) * obj.tk);
-
+            obj.tpos(1:4) = obj.sk(bestindex,1:4);
+            
+            % newtk = obj.calc_quad_feature_model(obj.tpos,iimg,3);
+            % obj.tk(1:2) = (bestp * newtk(1:2)) + ((1-bestp) * obj.tk(1:2));
+            
+            newtcolormodel = obj.calc_quad_feature_model(obj.tpos,iimg,3);
+            newtgxmodel    = obj.calc_feature_model(obj.tpos,igxchans,obj.numedgebins);
+            newtgymodel    = obj.calc_feature_model(obj.tpos,igychans,obj.numedgebins);
+            
+            obj.tcolormodel = (bestp * newtcolormodel) + ((1-bestp) * obj.tcolormodel);
+            obj.tgxmodel    = (bestp * newtgxmodel)    + ((1-bestp) * obj.tgxmodel);
+            obj.tgymodel    = (bestp * newtgymodel)    + ((1-bestp) * obj.tgymodel);
             
             
             % mark-up the image after determining points
@@ -115,23 +205,20 @@ classdef hybrid_particle_set
         end
         
         
-        function [cmodel] = calc_quad_color_model(obj,pos,iimg)
-            % divide into equal-sized quadrants
-            width  = round(pos(3)/2);
-            height = round(pos(4)/2);
+        function [fmodel] = calc_feature_model(obj,pos,iimg,numf)
+            % one rectangular region
+            width  = round(pos(3));
+            height = round(pos(4));
             pos = round(pos);
-            
+
             q1pos = [pos(1)+width,   pos(2)+height,   width, height];
-            q2pos = [pos(1)+2*width, pos(2)+height,   width, height];
-            q3pos = [pos(1)+width,   pos(2)+2*height, width, height];
-            q4pos = [pos(1)+2*width, pos(2)+2*height, width, height];
-            qpos = [q1pos;q2pos;q3pos;q4pos];
-            
+            qpos = [q1pos];
+
             % check region validity
-            for i = 1:size(qpos,2)
+            for i = 1:size(qpos,1)
                 if qpos(i,1) < 2 || qpos(i,2) < 2 || ...
                    qpos(i,1) - width > obj.imgwidth - 1 || qpos(i,2) - height > obj.imgheight - 1 
-                    cmodel = [];
+                    fmodel = [];
                     return;
                 end
             end
@@ -147,50 +234,108 @@ classdef hybrid_particle_set
                    qpos(i,2) = obj.imgheight; 
                 end
             end
-            
+
+            q1pos(1:4) = qpos(1,1:4);
+
+            q1sum = iimg(q1pos(2)-1,q1pos(1)-1,:);
+
+            q1k = q1sum;
+
+            % get rid of upper left data outside of ROI
+            if pos(1) > 1 % not along left side
+                q1k(1:numf) = q1k(1:numf) - iimg(q1pos(2)-1,        q1pos(1)-q1pos(3), 1:numf);
+            end
+            if pos(2) > 1 % not along upper side
+                q1k(1:numf) = q1k(1:numf) - iimg(q1pos(2)-q1pos(4), q1pos(1)-1,        1:numf);
+            end
+            if pos(1) > 1 && pos(2) > 1
+                q1k(1:numf) = q1k(1:numf) + iimg(q1pos(2)-q1pos(4), q1pos(1)-q1pos(3), 1:numf);
+            end
+
+            tmpq1k(1:numf) = q1k(:,:,1:numf)/(q1pos(3)*q1pos(4));
+
+            q1k = tmpq1k;
+
+            fmodel = [q1k];
+        end
+        
+        
+        function [fmodel] = calc_quad_feature_model(obj,pos,iimg,numf)
+            % divide into equal-sized quadrants
+            width  = round(pos(3)/2);
+            height = round(pos(4)/2);
+            pos = round(pos);
+
+            q1pos = [pos(1)+width,   pos(2)+height,   width, height];
+            q2pos = [pos(1)+2*width, pos(2)+height,   width, height];
+            q3pos = [pos(1)+width,   pos(2)+2*height, width, height];
+            q4pos = [pos(1)+2*width, pos(2)+2*height, width, height];
+            qpos = [q1pos;q2pos;q3pos;q4pos];
+
+            % check region validity
+            for i = 1:size(qpos,1)
+                if qpos(i,1) < 2 || qpos(i,2) < 2 || ...
+                   qpos(i,1) - width > obj.imgwidth - 1 || qpos(i,2) - height > obj.imgheight - 1 
+                    fmodel = [];
+                    return;
+                end
+            end
+
+            % update region bounds if necessary
+            for i = 1:size(qpos,1)
+                if qpos(i,1) > obj.imgwidth
+                   qpos(i,2) = qpos(1,2) - (qpos(i,1) - obj.imgwidth); 
+                   qpos(i,1) = obj.imgwidth;
+                end
+                if qpos(i,2) > obj.imgheight
+                   qpos(i,4) = qpos(1,4) - (qpos(i,2) - obj.imgheight); 
+                   qpos(i,2) = obj.imgheight; 
+                end
+            end
+
             q1pos(1:4) = qpos(1,1:4);
             q2pos(1:4) = qpos(2,1:4);
             q3pos(1:4) = qpos(3,1:4);
             q4pos(1:4) = qpos(4,1:4);
-            
+
             q1sum = iimg(q1pos(2)-1,q1pos(1)-1,:);
             q2sum = iimg(q2pos(2)-1,q2pos(1)-1,:);
             q3sum = iimg(q3pos(2)-1,q3pos(1)-1,:);
             q4sum = iimg(q4pos(2)-1,q4pos(1)-1,:);
-            
+
             q1k = q1sum;
             q2k = q2sum-q1sum;
             q3k = q3sum-q1sum;
             q4k = (q4sum+q1sum)-(q2sum+q3sum); % contains no excess
-            
+
             % get rid of upper left data outside of ROI
             if pos(1) > 1 % not along left side
-                q1k(1:3) = q1k(1:3) - iimg(q1pos(2)-1,        q1pos(1)-q1pos(3), 1:3);
-                q3k(1:3) = q3k(1:3) - iimg(q3pos(2)-1,        q3pos(1)-q3pos(3), 1:3);
-                q3k(1:3) = q3k(1:3) + iimg(q3pos(2)-q3pos(4), q3pos(1)-q3pos(3), 1:3);
+                q1k(1:numf) = q1k(1:numf) - iimg(q1pos(2)-1,        q1pos(1)-q1pos(3), 1:numf);
+                q3k(1:numf) = q3k(1:numf) - iimg(q3pos(2)-1,        q3pos(1)-q3pos(3), 1:numf);
+                q3k(1:numf) = q3k(1:numf) + iimg(q3pos(2)-q3pos(4), q3pos(1)-q3pos(3), 1:numf);
             end
             if pos(2) > 1 % not along upper side
-                q1k(1:3) = q1k(1:3) - iimg(q1pos(2)-q1pos(4), q1pos(1)-1,        1:3);
-                q2k(1:3) = q2k(1:3) - iimg(q2pos(2)-q2pos(4), q2pos(1)-1,        1:3);
-                q2k(1:3) = q2k(1:3) + iimg(q2pos(2)-q2pos(4), q2pos(1)-q2pos(3), 1:3);
+                q1k(1:numf) = q1k(1:numf) - iimg(q1pos(2)-q1pos(4), q1pos(1)-1,        1:numf);
+                q2k(1:numf) = q2k(1:numf) - iimg(q2pos(2)-q2pos(4), q2pos(1)-1,        1:numf);
+                q2k(1:numf) = q2k(1:numf) + iimg(q2pos(2)-q2pos(4), q2pos(1)-q2pos(3), 1:numf);
             end
             if pos(1) > 1 && pos(2) > 1
-                q1k(1:3) = q1k(1:3) + iimg(q1pos(2)-q1pos(4),q1pos(1)-q1pos(3),1:3);
+                q1k(1:numf) = q1k(1:numf) + iimg(q1pos(2)-q1pos(4), q1pos(1)-q1pos(3), 1:numf);
             end
-            
-            tmpq1k(1:3) = q1k(:,:,1:3)/(q1pos(3)*q1pos(4));
-            tmpq2k(1:3) = q2k(:,:,1:3)/(q2pos(3)*q2pos(4));
-            tmpq3k(1:3) = q3k(:,:,1:3)/(q3pos(3)*q3pos(4));
-            tmpq4k(1:3) = q4k(:,:,1:3)/(q4pos(3)*q4pos(4));
-            
+
+            tmpq1k(1:numf) = q1k(:,:,1:numf)/(q1pos(3)*q1pos(4));
+            tmpq2k(1:numf) = q2k(:,:,1:numf)/(q2pos(3)*q2pos(4));
+            tmpq3k(1:numf) = q3k(:,:,1:numf)/(q3pos(3)*q3pos(4));
+            tmpq4k(1:numf) = q4k(:,:,1:numf)/(q4pos(3)*q4pos(4));
+
             q1k = tmpq1k;
             q2k = tmpq2k;
             q3k = tmpq3k;
             q4k = tmpq4k;
-            
-            cmodel = [q1k;q2k;q3k;q4k];
-        end
 
+            fmodel = [q1k;q2k;q3k;q4k];
+        end
+            
         
         % TODO - may want to consider quasi-random sequence generator
         function [dist] = gen_uniform_norm_dist(obj,numpts,M,xvar,yvar)
@@ -214,8 +359,8 @@ classdef hybrid_particle_set
             % obj.graphics(gcount) = plot(obj.oldsk(:,1),obj.oldsk(:,2),'b+');
             % gcount = gcount + 1;
             
-            obj.graphics(gcount) = plot(obj.sk(:,1),obj.sk(:,2),'g+');
-            gcount = gcount + 1;
+            % obj.graphics(gcount) = plot(obj.sk(:,1),obj.sk(:,2),'g+');
+            % gcount = gcount + 1;
 
             % mark targets (tracking)
             % if ~obj.islost % only record good targets

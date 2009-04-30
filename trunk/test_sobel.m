@@ -113,8 +113,8 @@ while(true)
     gymodel = calc_quad_feature_model(pos,igychans,numbins);
     % gymodel
     hk = [gxmodel,gymodel];
-
-    sd = 10;
+    
+    sd = 0.5;
     rho = (tk-hk).^2;
     rho = sum(rho,2);
     rho = sum(rho);
