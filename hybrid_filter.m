@@ -3,7 +3,7 @@ function [] = hybrid_filter(movfilestr)
 
 %parameters
 steps = -1; % [50] number of frames to track, [-1] => all
-startframe = 1; % [125][200][690][60] starting frame
+startframe = 100; % [125][200][690][60] starting frame
 framenum = startframe;
 numedgebins = 8; % per edge component
 
