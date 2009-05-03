@@ -8,7 +8,8 @@ classdef hybrid_particle_set
         origxvar = 10;
         origyvar = 10;
 
-        orignumpts = 1000; % [100] number of particles in system
+        orignumpts = 100; % [1000] number of particles in system
+        postostore = 3;
         
         % tracking variables
         graphics = []; % set of graphic handles
@@ -24,10 +25,13 @@ classdef hybrid_particle_set
         imgwidth = [];
         islost = [];
         tpos = [];
-        tcolormodel = [];
+        t2cmodel = [];
+        t3cmodel = [];
+        t4cmodel = [];
         tgxmodel = [];
         tgymodel = [];
         numedgebins = [];
+        posqueue = [];
     end
     
     methods
@@ -39,6 +43,7 @@ classdef hybrid_particle_set
             obj.oldnumpts = obj.numpts;
             obj.xvar = obj.origxvar;
             obj.yvar = obj.origyvar;
+            obj.posqueue = circular_queue(obj.postostore);
             if nargin > 0
                 obj.steps = steps;
             end
@@ -58,10 +63,12 @@ classdef hybrid_particle_set
             obj.tpos = wait(h); % [x1,y1,width,height], [x1,y1] denotes upper left point
             delete(h);
             
-            % calculate target model
-            obj.tcolormodel = obj.calc_quad_feature_model(obj.tpos,iimg,3);
-            obj.tgxmodel    = obj.calc_feature_model(obj.tpos,igxchans,obj.numedgebins);
-            obj.tgymodel    = obj.calc_feature_model(obj.tpos,igychans,obj.numedgebins);
+            % calculate target feature models
+            obj.t2cmodel = obj.calc_duel_feature_model(obj.tpos,iimg,3);
+            obj.t3cmodel = obj.calc_tri_feature_model(obj.tpos,iimg,3);
+            obj.t4cmodel = obj.calc_quad_feature_model(obj.tpos,iimg,3);
+            obj.tgxmodel = obj.calc_quad_feature_model(obj.tpos,igxchans,obj.numedgebins);
+            obj.tgymodel = obj.calc_quad_feature_model(obj.tpos,igychans,obj.numedgebins);
         end
         
         
@@ -71,8 +78,8 @@ classdef hybrid_particle_set
             % determine particle positions
             dist = obj.gen_uniform_norm_dist(obj.numpts,obj.tpos(1:2),obj.xvar,obj.yvar);
             
-            % sk = [xcoord, ycoord, width, height, colorp, edgep]
-            obj.sk = zeros(obj.numpts,6);
+            % sk = [xcoord, ycoord, width, height, colorp, edgep, combp]
+            obj.sk = zeros(obj.numpts,7);
             obj.sk(:,1) = dist(:,1);
             obj.sk(:,2) = dist(:,2);
             
@@ -82,23 +89,30 @@ classdef hybrid_particle_set
             
             % initialize candidate pool
             candidates = 1:obj.numpts;
+            [obj.posqueue,val] = obj.posqueue.mean();
+            val
             
             % update candidates
             for i = candidates
+                obj.sk(i,1) = obj.sk(i,1) + val(1) * (rand() + 1);
+                obj.sk(i,2) = obj.sk(i,2) + val(2) * (rand() + 1); 
+                
                 hpos(1:2) = obj.sk(i,1:2); % unique x and y
                 hpos(3:4) = obj.tpos(3:4); % same width and height
                 % hpos(3) = obj.tpos(3) + (obj.tpos(3) * (rand()/5 - 0.1));
                 % hpos(4) = obj.tpos(4) + (obj.tpos(4) * (rand()/5 - 0.1));
                 obj.sk(i,3:4) = hpos(3:4);
                 
-                % calculate color model
-                hcolormodel = obj.calc_quad_feature_model(hpos,iimg,3);
+                % calculate color feature models
+                h2cmodel = obj.calc_duel_feature_model(hpos,iimg,3);
+                h3cmodel = obj.calc_tri_feature_model(hpos,iimg,3);
+                h4cmodel = obj.calc_quad_feature_model(hpos,iimg,3);
 
                 % handle color model
                 colorp = -1;
-                if ~isempty(hcolormodel) % particle not out of bounds
-                   tk = obj.tcolormodel;
-                   hk = hcolormodel;
+                if ~isempty(h2cmodel) && ~isempty(h3cmodel) && ~isempty(h4cmodel) % particle not out of bounds
+                   tk = [obj.t2cmodel',obj.t3cmodel',obj.t4cmodel'];
+                   hk = [h2cmodel',h3cmodel',h4cmodel'];
                    rho = (tk-hk).^2;
                    rho = sum(rho,2);
                    rho = sum(rho);
@@ -106,12 +120,14 @@ classdef hybrid_particle_set
                    colorp = exp(-(rho.^2)/obj.colorsd^2);
                 end
                 obj.sk(i,5) = colorp;
+                obj.sk(i,5) = colorp % DEBUG
+                obj.sk(i,7) = colorp;
             end
             
             % determine probability distribution
             % keep top percentile and update candidates
-            [colorpdist,colorpcenters] = hist(obj.sk(candidates,5),20); 
-            [colorsortvals,colorsortindexes] = sort(obj.sk(candidates,5));
+            [colorpdist,colorpcenters] = hist(obj.sk(candidates,7),20); 
+            [colorsortvals,colorsortindexes] = sort(obj.sk(candidates,7));
             colorsortindexes = candidates(colorsortindexes);
             
             [topindexes] = find(colorpdist); 
@@ -127,8 +143,8 @@ classdef hybrid_particle_set
             
             % update candidates
             for i = candidates
-                hgxmodel = obj.calc_feature_model(hpos,igxchans,obj.numedgebins);
-                hgymodel = obj.calc_feature_model(hpos,igychans,obj.numedgebins);
+                hgxmodel = obj.calc_quad_feature_model(hpos,igxchans,obj.numedgebins);
+                hgymodel = obj.calc_quad_feature_model(hpos,igychans,obj.numedgebins);
 
                 % handle edge orientation model
                 edgep = -1;
@@ -142,12 +158,13 @@ classdef hybrid_particle_set
                     edgep = exp(-(rho.^2)/obj.edgesd^2);
                 end
                 obj.sk(i,6) = edgep;
+                obj.sk(i,7) = obj.sk(i,7) * edgep;
             end
             
             % determine probability distribution
             % keep top percentile and update candidates
-            [edgepdist,edgepcenters] = hist(obj.sk(candidates,6),10); 
-            [edgesortvals,edgesortindexes] = sort(obj.sk(candidates,6));
+            [edgepdist,edgepcenters] = hist(obj.sk(candidates,7),10); 
+            [edgesortvals,edgesortindexes] = sort(obj.sk(candidates,7));
             edgesortindexes = candidates(edgesortindexes);
             
             [topindexes] = find(edgepdist); 
@@ -169,7 +186,13 @@ classdef hybrid_particle_set
             % bestp = bestcolorp;
             
             bestindex = candidates(end);
-            bestp = obj.sk(bestindex,5);
+            bestp = obj.sk(bestindex,7);
+            
+            for i = 1:obj.numpts
+               fprintf('%d: %d %d %d\n',i,obj.sk(i,5),obj.sk(i,6),obj.sk(i,7)); 
+            end
+            
+            bestindex
             bestp
             
             %{
@@ -185,19 +208,27 @@ classdef hybrid_particle_set
             end
             %}
             
+            obj.oldtpos = obj.tpos;
             obj.tpos(1:4) = obj.sk(bestindex,1:4);
+            [obj.posqueue] = obj.posqueue.push_back(obj.tpos(1:2)-obj.oldtpos(1:2));
             
             % newtk = obj.calc_quad_feature_model(obj.tpos,iimg,3);
             % obj.tk(1:2) = (bestp * newtk(1:2)) + ((1-bestp) * obj.tk(1:2));
             
-            newtcolormodel = obj.calc_quad_feature_model(obj.tpos,iimg,3);
-            newtgxmodel    = obj.calc_feature_model(obj.tpos,igxchans,obj.numedgebins);
-            newtgymodel    = obj.calc_feature_model(obj.tpos,igychans,obj.numedgebins);
+            newt2cmodel = obj.calc_duel_feature_model(obj.tpos,iimg,3);
+            newt3cmodel = obj.calc_tri_feature_model(obj.tpos,iimg,3);
+            newt4cmodel = obj.calc_quad_feature_model(obj.tpos,iimg,3);
+            newtgxmodel = obj.calc_quad_feature_model(obj.tpos,igxchans,obj.numedgebins);
+            newtgymodel = obj.calc_quad_feature_model(obj.tpos,igychans,obj.numedgebins);
             
-            obj.tcolormodel = (bestp * newtcolormodel) + ((1-bestp) * obj.tcolormodel);
-            obj.tgxmodel    = (bestp * newtgxmodel)    + ((1-bestp) * obj.tgxmodel);
-            obj.tgymodel    = (bestp * newtgymodel)    + ((1-bestp) * obj.tgymodel);
+            obj.t2cmodel = (bestp * newt2cmodel) + ((1-bestp) * obj.t2cmodel);
+            obj.t3cmodel = (bestp * newt3cmodel) + ((1-bestp) * obj.t3cmodel);
+            obj.t4cmodel = (bestp * newt4cmodel) + ((1-bestp) * obj.t4cmodel);
             
+            obj.tgxmodel = (bestp * newtgxmodel) + ((1-bestp) * obj.tgxmodel);
+            obj.tgymodel = (bestp * newtgymodel) + ((1-bestp) * obj.tgymodel);
+            obj.tgxmodel = newtgxmodel;
+            obj.tgymodel = newtgymodel;
             
             % mark-up the image after determining points
             obj = obj.mark_up(step);
@@ -260,8 +291,142 @@ classdef hybrid_particle_set
         end
         
         
+        function [fmodel] = calc_duel_feature_model(obj,pos,iimg,numf)
+            % divide into 2 (vert-oriented) equal-sized quadrants
+            width  = round(pos(3));
+            height = round(pos(4)/2);
+            pos = round(pos);
+
+            q1pos = [pos(1)+width, pos(2)+height,   width, height];
+            q2pos = [pos(1)+width, pos(2)+2*height, width, height];
+            qpos = [q1pos;q2pos];
+
+            % check region validity
+            for i = 1:size(qpos,1)
+                if qpos(i,1) < 2 || qpos(i,2) < 2 || ...
+                   qpos(i,1) - width > obj.imgwidth - 1 || qpos(i,2) - height > obj.imgheight - 1 
+                    fmodel = [];
+                    return;
+                end
+            end
+
+            % update region bounds if necessary
+            for i = 1:size(qpos,1)
+                if qpos(i,1) > obj.imgwidth
+                   qpos(i,2) = qpos(1,2) - (qpos(i,1) - obj.imgwidth); 
+                   qpos(i,1) = obj.imgwidth;
+                end
+                if qpos(i,2) > obj.imgheight
+                   qpos(i,4) = qpos(1,4) - (qpos(i,2) - obj.imgheight); 
+                   qpos(i,2) = obj.imgheight; 
+                end
+            end
+
+            q1pos(1:4) = qpos(1,1:4);
+            q2pos(1:4) = qpos(2,1:4);
+
+            q1sum = iimg(q1pos(2)-1,q1pos(1)-1,:);
+            q2sum = iimg(q2pos(2)-1,q2pos(1)-1,:);
+
+            q1k = q1sum;
+            q2k = q2sum-q1sum;
+
+            % get rid of upper left data outside of ROI
+            if pos(1) > 1 % not along left side
+                q1k(1:numf) = q1k(1:numf) - iimg(q1pos(2)-1,        q1pos(1)-q1pos(3), 1:numf);
+                q2k(1:numf) = q2k(1:numf) - iimg(q2pos(2)-1,        q2pos(1)-q2pos(3), 1:numf);
+                q2k(1:numf) = q2k(1:numf) + iimg(q2pos(2)-q2pos(4), q2pos(1)-q2pos(3), 1:numf);
+            end
+            if pos(2) > 1 % not along upper side
+                q1k(1:numf) = q1k(1:numf) - iimg(q1pos(2)-q1pos(4), q1pos(1)-1,        1:numf);
+            end
+            if pos(1) > 1 && pos(2) > 1
+                q1k(1:numf) = q1k(1:numf) + iimg(q1pos(2)-q1pos(4), q1pos(1)-q1pos(3), 1:numf);
+            end
+
+            tmpq1k(1:numf) = q1k(:,:,1:numf)/(q1pos(3)*q1pos(4));
+            tmpq2k(1:numf) = q2k(:,:,1:numf)/(q2pos(3)*q2pos(4));
+
+            q1k = tmpq1k;
+            q2k = tmpq2k;
+
+            fmodel = [q1k;q2k];
+        end
+        
+        
+        function [fmodel] = calc_tri_feature_model(obj,pos,iimg,numf)
+            % divide into 3 (horz-oriented) equal-sized quadrants
+            width  = round(pos(3)/3);
+            height = round(pos(4));
+            pos = round(pos);
+
+            q1pos = [pos(1)+width,   pos(2)+height, width, height];
+            q2pos = [pos(1)+2*width, pos(2)+height, width, height];
+            q3pos = [pos(1)+3*width, pos(2)+height, width, height];
+            qpos = [q1pos;q2pos;q3pos];
+
+            % check region validity
+            for i = 1:size(qpos,1)
+                if qpos(i,1) < 2 || qpos(i,2) < 2 || ...
+                   qpos(i,1) - width > obj.imgwidth - 1 || qpos(i,2) - height > obj.imgheight - 1 
+                    fmodel = [];
+                    return;
+                end
+            end
+
+            % update region bounds if necessary
+            for i = 1:size(qpos,1)
+                if qpos(i,1) > obj.imgwidth
+                   qpos(i,2) = qpos(1,2) - (qpos(i,1) - obj.imgwidth); 
+                   qpos(i,1) = obj.imgwidth;
+                end
+                if qpos(i,2) > obj.imgheight
+                   qpos(i,4) = qpos(1,4) - (qpos(i,2) - obj.imgheight); 
+                   qpos(i,2) = obj.imgheight; 
+                end
+            end
+
+            q1pos(1:4) = qpos(1,1:4);
+            q2pos(1:4) = qpos(2,1:4);
+            q3pos(1:4) = qpos(3,1:4);
+
+            q1sum = iimg(q1pos(2)-1,q1pos(1)-1,:);
+            q2sum = iimg(q2pos(2)-1,q2pos(1)-1,:);
+            q3sum = iimg(q3pos(2)-1,q3pos(1)-1,:);
+
+            q1k = q1sum;
+            q2k = q2sum-q1sum;
+            q3k = q3sum-q1sum;
+
+            % get rid of upper left data outside of ROI
+            if pos(1) > 1 % not along left side
+                q1k(1:numf) = q1k(1:numf) - iimg(q1pos(2)-1,        q1pos(1)-q1pos(3), 1:numf);
+            end
+            if pos(2) > 1 % not along upper side
+                q1k(1:numf) = q1k(1:numf) - iimg(q1pos(2)-q1pos(4), q1pos(1)-1,        1:numf);
+                q2k(1:numf) = q2k(1:numf) - iimg(q2pos(2)-q2pos(4), q2pos(1)-1,        1:numf);
+                q2k(1:numf) = q2k(1:numf) + iimg(q2pos(2)-q2pos(4), q2pos(1)-q2pos(3), 1:numf);
+                q3k(1:numf) = q3k(1:numf) - iimg(q3pos(2)-q3pos(4), q3pos(1)-1,        1:numf);
+                q3k(1:numf) = q3k(1:numf) + iimg(q3pos(2)-q3pos(4), q3pos(1)-q3pos(3), 1:numf);
+            end
+            if pos(1) > 1 && pos(2) > 1
+                q1k(1:numf) = q1k(1:numf) + iimg(q1pos(2)-q1pos(4), q1pos(1)-q1pos(3), 1:numf);
+            end
+
+            tmpq1k(1:numf) = q1k(:,:,1:numf)/(q1pos(3)*q1pos(4));
+            tmpq2k(1:numf) = q2k(:,:,1:numf)/(q2pos(3)*q2pos(4));
+            tmpq3k(1:numf) = q3k(:,:,1:numf)/(q3pos(3)*q3pos(4));
+
+            q1k = tmpq1k;
+            q2k = tmpq2k;
+            q3k = tmpq3k;
+
+            fmodel = [q1k;q2k;q3k];
+        end
+        
+        
         function [fmodel] = calc_quad_feature_model(obj,pos,iimg,numf)
-            % divide into equal-sized quadrants
+            % divide into 4 equal-sized quadrants
             width  = round(pos(3)/2);
             height = round(pos(4)/2);
             pos = round(pos);
@@ -361,6 +526,13 @@ classdef hybrid_particle_set
             
             % obj.graphics(gcount) = plot(obj.sk(:,1),obj.sk(:,2),'g+');
             % gcount = gcount + 1;
+            
+            %{
+            for i = 1:obj.numpts
+                obj.graphics(gcount) = rectangle('Position',obj.sk(i,1:4),'LineWidth',1,'EdgeColor','g'); % DEBUG
+                gcount = gcount + 1;
+            end
+            %}
 
             % mark targets (tracking)
             % if ~obj.islost % only record good targets
