@@ -36,3 +36,7 @@ Students.avi (3214 frames)
 1 - 1460        walk across, scatter, and chat
 1461 - 3214     walk in, split into two groups, wave hands
 
+
+Virtual Dub
+- frame rate 250
+- decimate 250

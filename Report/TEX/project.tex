@@ -10,7 +10,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Homework Specific Information
 \newcommand{\hmwkTitle}{Object Tracking using Particle Filters}
-\newcommand{\hmwkDueDate}{Friday,\ May\ 15,\ 2009}
+\newcommand{\hmwkDueDate}{Thursday,\ May\ 14,\ 2009}
 \newcommand{\hmwkClass}{4005-759-03\ Advanced Computer Vision}
 \newcommand{\hmwkAuthorName}{Brian\ Rezenbrink\ and Jeffrey\ Robble}
 \newcommand{\hmwkClassInstructor}{4005-758-01 - Dr. Gaborski}
@@ -40,11 +40,22 @@
 
 \section{Introduction}
 
-Particle filters are often employed to solve a variety of recursive state estimation problems in non-linear dynamic systems, especially in the areas of mobile robot localization and modeling of gyroscope motion.
+Particle filters are often employed to solve a variety of recursive state estimation problems in non-linear dynamic systems. Specifically, the Kalman filter is used in many control theory and control feedback systems where it is necessary to estimate the state of a system based on its previous state, such as in the areas of mobile robot localization and modeling of gyroscope motion. Such systems receive information about events on a periodic basis. They apply the Kalman filter to predict what happens between these information updates.
+
+The extended Kalman filter (EKF) can approximate non-linear motion by approximating linear motion at each time step. The Condensation filter is a form of the EKF. It is used in the field of computer vision to track objects in video by predicting the position of particles is space. When people refer to a particle filter in computer vision they are most often referring to a version of the Condensation filter. The term particle filter is used in this paper.
+
+The initial focus of our research was implementing a version of the particle filter presented by Cuevas,  Zaldivar, and Rojas \cite{particle} with some modification and applying it to track students in a classroom video scene. Their filter uses a color histogram model to determine particle similarity. Because their filter is only intended to track a small distribution of pixels frame-by-frame throughout a video, we needed to devise a way to track multiple pixel distributions in order to account for the entire area of a multi-colored object, such as a student. To this end we considered applying spring forces between a particle system tracking the face of a student and a particle system tracking the torso of a student. This approach was met with minimal success so we began to investigate the face-dectection work of Viola and Jones using rectangular windows for feature extraction \cite{facedetection}.
+
+One of the major reasons we considered using rectangular windows is because they are able to divide an image into sub-regions and in turn calculate a feature for each sub-region. The benefit of using rectangular windows over a color histogram model is that the relative positions of color distributions is maintained. Thus, the flesh-tone of a student's face may be captured in the upper region of a rectangular window while the color of the student's shirt is captured in the lower regions. On the other hand, the color histogram model will not consider that the flesh-tone component of the color distribution should be located above the component capturing the color of the student's shirt. Thus, a particle system that employs the color histogram model is more likely to jump from tracking a student's face to a student's arm, for example.
+
+In Section \ref{sec:kalmanfilter} we present the theory behind the Kalman filter and the EKF. Then we present the particle filter in Section \ref{sec:particlefilter}. In Section \ref{sec:multparticlesys} we present our approach to handling multiple particle systems using spring forces and the issues we encountered. Then in Section \ref{sec:hybridfilter} we discuss a Viola and Jones inspired particle filter approach using rectangular windows for feature extraction based on the work of Yang, et al. \cite{hybrid}. Finally we consider areas for future research in Section \ref{sec:future} and conclude in Section \ref{sec:conclusion}.
+  
 
 \section{Kalman Filter}
+\label{sec:kalmanfilter}
 
 \subsection{Extended Kalman Filter}
+
 
 
 \section{Particle Filter}
@@ -108,8 +119,8 @@ This rationale is supported by the face-detection research of Viola and Jones in
 
 
 
-\subsection{Multiple Particle Systems}
-\label{multparticlesys}
+\section{Multiple Particle Systems}
+\label{sec:multparticlesys}
 
 The next goal was to track an entire person. Although we could simply track a person's face using a single representative point between the eyes, we decided to go for a more robust approach that would allow use to track more of a person's body. The most intuitive way to do this is to use multiple particle systems to track multiple points over a person's body. In the simplest case, one particle system would track a person's face and another particle system would be positioned below the first to track a person's torso. The primary issue with this approach is linking these particle systems together. Heuristically, we know that the center of a person's torso is located directly below a person's face by about 1.5 - 2 lengths of that person's head. To take advantage of this relative positional relationship between particle systems, we applied the use of spring forces between target points.
 
@@ -117,6 +128,7 @@ The next goal was to track an entire person. Although we could simply track a pe
 
 
 \section{Hierarchical Particle Filter}
+\label{sec:hybridfilter}
 
 As discussed in Section \ref{sec:particlefilter}, Viola and Jones had great success detecting faces using a rectangular window to capture the average color intensity around a person's eyes and the average color intensity of that person's upper cheeks. The major difference between Viola and Jones' approach and our single particle system approach is that their target window is capable of determining the relative position of average color intensities. Our original thought was to use multiple particle systems to track targets of varying color intensities and to constrain the relative positions of those systems using spring forces, however, as mentioned in Section \ref{multparticlesys}, doing so became quite a challenge. 
 
@@ -261,13 +273,17 @@ In order to handle slight variations in color (such as changes in lighting condi
 
 Equation \ref{eq:nextcolormodel} simply calculates the next frame's color model by multiplying the newly determined target's color model times the probability that the new target matches the old target. This value is then added to the product of multiplying the old target's color model times the probability that the new target does not match the old target. Equation \ref{eq:nextedgemodel} does the same for the edge histogram model. In practice this update scheme works well because when the person being tracked becomes occluded $p_m$ is very low, thus almost no alteration is made to the color model or edge model and the particle position does not change. Hence, the tracking window maintains its position over the person being tracked during the occlusion.  
 
-\subsection{Future Considerations}
+
+
+\section{Future Considerations}
+\label{sec:future}
 
 Currently the size of the tracking window is constant over the period of time in which a person is being tracked. It would desirable for the window to expand and shrink as the person being tracked moves towards and away from the camera and takes up more and less of the frame area, respectively. We attempted to randomly alter the window width and height for each particle in the particle set slightly to address this. We then observed that for a person walking horizontally across the screen the window would often expand to capture the person's previous position as well as old positions, often increasing in two to three times its original width. Clearly this is undesirable, so the modification was removed from our implementation.
 
 
-\section{Conclusion}
 
+\section{Conclusion}
+\label{sec:conclusion}
 
 
 \newpage
