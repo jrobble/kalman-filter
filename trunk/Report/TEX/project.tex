@@ -168,6 +168,8 @@ The matrix is equal to the partial derivative of the measurement function with r
 
 The extended Kalman filter inspired the development of the particle filter for tracking objects in video. The particle filter presented by Cuevas,  Zaldivar, and Rojas attempts to track a small color distribution within a circular window centered around a target pixel \cite{particle}. All of the equations in this section are taken from their paper. 
 
+\subsection{Particle Selection and Target Similarity}
+
 Since we are most concerned with particles concentrated near the center of the window region, we assign a lower priority to pixels further away from the center. To do this we employ following equation where $e$ is the radial distance between a current pixel under consideration and the window center: 
 
 \begin{equation}
@@ -210,21 +212,138 @@ b^i = \frac{1}{\sqrt{2\pi\rho}} \text{ exp } \left ( - \frac{(1-\rho[p_{S_k^i},q
 
 $\sigma$ is a variance determined by the user. The smaller the variance, the more selective the particle filter will be about choosing the particle that most closely matches the target pixel. Setting the variance too low will result in very small probabilities and will make it hard to track the target particle. Setting the variance too high will result in a greater probability of choosing a non-optimal particle as the target particle match. 
 
-The particle filter algorithm employs these equations and proceeds according to the \mbox{following steps}:
+The particle filter algorithm in \cite{particle} employs these equations and proceeds according to the \mbox{following steps}:
 
 \begin{enumerate}
-\item{adfads}
+
+\item{For each particle, calculate the cumulative probability as:
+
+\begin{equation}
+c^0_{k-1} = 0 \text{ , } c^i_{k-1} = c^{i-1}_{k-1} + b^i_{k-1} \text{ } \Bigl \vert \text{ } i = 1, 2, \dots, M
+\label{eq:bprob}
+\end{equation}
+
+Note that the ordering of the $M$ particles is not important. Each particle $i$ in set $S$ now has three components: a state, ${\bf x}$, (i.e. location), probability of matching the target particle, $b$, and a cumulative probability, $c$. Thus, $S^i_{k-1} = \{ {\bf x}^i_{k-1}, b^i_{k-1}, c^i_{k-1} \} \text{ } \Bigl \vert \text{ } \mbox{i = 1, 2, \dots, $M$}$.
+}
+
+\item{Resample particles using a Monte Carlo approach by selecting $M$ states with repetition from $S^i_{k-1}$ according to the following procedure:
+
+\begin{enumerate}
+\item{Generate a uniformly distributed random number $r \in [0,1]$.}
+\item{Find the smallest $j$ for which $c^j_{k-1} \geq r$.}
+\item{Select the particle with that cumulative probability.}
+\end{enumerate}
+}
+
+\item{Apply the transition function to the newly selected particle states such that ${\bf x}^i_k = {\bf f}(k,{\bf x}^i_{k-1}) + {\bf w}_k$. The transition function can take the form of an update rule, as discussed in Section~\ref{sec:updaterule}.}
+
+\item{For each new particle calculate the corresponding probability, $b$, of matching the \mbox{target~particle.}}
+
+\item{Normalize the calculated probabilities such that $\sum^M_{i=1}b^i_k = 1$ and build the new particle set $S^i_{k} = \{ {\bf x}^i_k, b^i_k \} \text{ } \Bigl \vert \text{ } \mbox{i = 1, 2, \dots, $M$}$.}
+
+\item{Estimate the new target particle location at time $k$ and update the target particle, as explained in Section \ref{sec:targetestimation}.}
+
+\item{Repeat the previous steps for the next iteration.}
+
 \end{enumerate}
 
 
-\subsection{Target Update}
+\subsection{Particle Update Rule}
+\label{sec:updaterule}
 
-\textcolor{red}{Use presentation images and talk about three target determination methods here.} \\
+Each particle, ${\bf x}^i_k$, in set $S_k$ updates its location in the image at time $k$ according to an update rule, ${\bf f}(k,{\bf x}^i_k)$. In the simplest case, the update rule is static and can be used to account for straight-line linear particle motion:
+
+
+\begin{equation}
+\left [ \begin{array}{c}
+x_{k+1} \\
+y_{k+1} \\
+\Delta x_{k+1} \\
+\Delta y_{k+1} \end{array} \right ] 
+=
+\left [ \begin{array}{c}
+x_k + \Delta x_k \\
+y_k + \Delta y_k \\
+x_k \\
+y_k \end{array} \right ] 
++ {\bf w}_k
+\label{eq:linearupdate}
+\end{equation} \\
+
+We chose to implement our particle system using the Brownian motion update rule:
+
+\begin{equation}
+\left [ \begin{array}{c}
+x_{k+1} \\
+y_{k+1} \\
+\Delta x_{k+1} \\
+\Delta y_{k+1} \end{array} \right ] 
+=
+\left [ \begin{array}{c}
+\text{exp}(-\frac{1}{4}(x_k+1.5 \Delta x_k)) \\
+\text{exp}(-\frac{1}{4}(y_k+1.5 \Delta y_k) \\
+\text{exp}(-\frac{1}{4}(\Delta x_k) \\
+\text{exp}(-\frac{1}{4}(\Delta y_k) \end{array} \right ] 
++ {\bf w}_k
+\label{eq:brownianupdate}
+\end{equation} \\
+
+In practice, Brownian motion is able to track objects with unpredictable movement as long as those objects are not moving too quickly. Brownian motion is based on the work of Scottish botanist Robert Brown in 1827 and attempts to simulate the seemingly random movement of visible particles suspended in a liquid or gas caused by collisions with invisible atoms. It is also referred to as a ``random walk" and is commonly used in Monte Carlo methods. Figure \ref{fig:brownianmotion} is a plot showing the Brownian motion update rule applied to a single particle over time.
+
+\begin{figure}[H]
+\centering
+\includegraphics[scale=.4]{img/brownianmotion.jpg}
+\caption{Example plot of the Brownian motion update rule applied to a single particle over time. Vertices in the plot denote positions of the particle at specific instances in time.}
+\label{fig:brownianmotion}
+\end{figure}
 
 
 
-\textcolor{red}{Copy + paste and describe the particle system algorithm on page 6 here.} \\
+\subsection{Target Particle Estimation}
+\label{sec:targetestimation}
 
+Once all of the particles in the set $S_k$ have been selected and updated, we must determine the new target particle location and update the target particle according to one of three methods: weighted mean, best particle, or robust mean.
+
+The weighted mean method averages all of the $M$ particle locations in set $S_k$ according to their probability of matching the target, $b$, and takes the mean as the new target location, ${\bf \hat x}_k$:
+
+\begin{equation}
+{\bf \hat x}_k = \sum^M_{i=1} b^i_k {\bf x}^i_k
+\label{eq:weightedmean}
+\end{equation}
+
+
+This is illustrated in Figure \ref{fig:weightedmean}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[scale=.55]{img/weightedmean.jpg}
+\caption{Example of the weight mean target particle estimation method applied to tracking a red orb. The yellow box represents the target particle. The green crosses represent the current particles in the particle set. In the worst case scenario is also shown.}
+\label{fig:weightedmean}
+\end{figure}
+
+The best particle method simply chooses the particle with the highest probability of matching the target as the new target. This is illustrated in Figure \ref{fig:bestparticle}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[scale=.55]{img/bestparticle.jpg}
+\caption{Example of the best particle target particle estimation method applied to tracking a red orb. In the worst case scenario we erroneously start tracking another red orb in the scene.}
+\label{fig:bestparticle}
+\end{figure}
+
+The robust mean method takes the weighted mean of all particles in the set within a circular region around the best particle. This is illustrated in Figure \ref{fig:robustmean}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[scale=.55]{img/robustmean.jpg}
+\caption{Example of the robust mean target particle estimation method applied to tracking a red orb. The new target was determined by taking the mean of all of the particles within the circular region (shown by the white circle) around the best particle.}
+\label{fig:robustmean}
+\end{figure}
+
+In general the robust mean method works better than the weighted mean and best particle methods. The major reason why it is better than the weight mean method  is because the resulting target will be located near another particle in the system. This reduces the probability that the target location will be in an undesirable region where the color distribution does not match that of the original target, as shown by the worst case scenario in Figure \ref{fig:weightedmean} where the new target is estimated to be at the specular highlight in the center of the red orb. The robust mean method often works better than the best particle method because the probability that the resulting target will jump large distances from its previous location due to the impact of outlying particles is reduced by averaging. The worst case scenario in Figure \ref{fig:bestparticle} shows the undesirable effect of outlying particles when using the best particle method. We chose to implement our particle system using the robust mean method.
+
+
+
+\subsection{Analysis}
 
 A single particle system is capable of tracking a single point. A point consists of a target pixel surrounded by a small circular window of pixels. All of the pixels within that window are used to construct a color profile histogram for that point. These points can also be referred to as distributions because they capture the average color intensity within a small~area.
 
