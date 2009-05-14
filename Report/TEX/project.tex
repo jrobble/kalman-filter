@@ -58,12 +58,12 @@ In Section \ref{sec:kalmanfilter} we present the theory behind the Kalman filter
 The Kalman filter is used to solve recursive state estimation problems in non-linear dynamic systems where it is necessary to estimate the state of a system based on its previous state. Consider the following process equation that describes the behavior of the system in question (note that all equations in this section are taken from \cite{kalman}):
 
 \begin{equation}
-{\bf x}_{k+1} = {\bf F}_{k+1} {\bf x}_k + {\bf w}_k
+{\bf x}_{k+1} = {\bf F}_{k+1,k} {\bf x}_k + {\bf w}_k
 \label{eq:process}
 \end{equation}
 \vspace{0.01cm}
 
-${\bf F}_{k+1}$ is the transition matrix that describes the transition of state ${\bf x}$ at time $k$ to time $k + 1$. ${\bf w}_k$ is additive, white, Gaussian process noise with zero mean and zero off-diagonal covariances.  
+${\bf F}_{k+1}$ is the transition matrix that describes the transition of state ${\bf x}$ at time $k$ to time $k + 1$. ${\bf w}_k$ is additive, white, Gaussian process noise with zero mean and zero off-diagonal covariances. Note that the variances along the diagonal are represented by the matrix ${\bf Q}_k$.
 
 Now consider the following measurement equation used to measure the change in behavior of the system under observation:
 
@@ -73,7 +73,7 @@ Now consider the following measurement equation used to measure the change in be
 \end{equation}
 \vspace{0.01cm}
 
-${\bf H}_{k}$ is the measurement matrix that maps the true space onto the observed space and ${\bf y}_{k}$ is the observed state of the true state ${\bf x}$ at time $k$. ${\bf v}_k$ is additive, white, Gaussian measurement noise with zero mean and zero off-diagonal covariances.  
+${\bf H}_{k}$ is the measurement matrix that maps the true space onto the observed space and ${\bf y}_{k}$ is the observed state of the true state ${\bf x}$ at time $k$. ${\bf v}_k$ is additive, white, Gaussian measurement noise with zero mean and zero off-diagonal covariances. Note that the variances along the diagonal are represented by the matrix ${\bf R}_k$.
 
 We can represent a linear discrete-time dynamical system as a flow chart shown in \mbox{Figure \ref{fig:kalmanflow}}.
 
@@ -86,10 +86,82 @@ We can represent a linear discrete-time dynamical system as a flow chart shown i
 
 The Kalman filtering problem is defined as optimally solving the process equation and measurement equation for an unknown state. Using the observed data for all of the previous iterations, ${\bf y}_1, {\bf y}_2, \dots, {\bf y}_k$ for $k \geq 1$, we attempt to find the minimum mean-square error estimate of ${\bf x}_k$. Note that the state ${\bf x}$ at time $k = 0$ is known. 
 
-Consider that we are concerned with finding ${\bf x}_i$ for the current time $k$. If $i = k$ then we are trying to draw a conclusion about ${\bf x}$ based on the current state of the world and all observed data. This is known as a filtering problem, such as object tracking. If $i > k$ then we are trying to predict a future state, so we have a prediction problem. If $1 \leq i \leq k$ then we are trying to determine the state based on some prior and subsequent information, so we have a smoothing problem.
+Consider that we are concerned with finding ${\bf x}_i$ for the current time $k$. If $i = k$ then we are trying to draw a conclusion about ${\bf x}$ based on the current state of the world and all observed data. This is known as a filtering problem, such as object tracking. If $i > k$ then we are trying to predict a future state, so we have a prediction problem. If $1 \leq i \leq k$ then we are trying to determine the state based on some prior and subsequent information, so we have a smoothing problem. Figure \ref{fig:stateestimation} summarizes how the Kalman filter can be used for recursive state estimation to solve a filtering problem.
+
+\begin{figure}[H]
+\centering
+\includegraphics[scale=.5]{img/stateestimation.jpg}
+\caption{Flow chart showing how the Kalman filter can be used for recursive state estimation. Image taken from \cite{kalman}.}
+\label{fig:stateestimation}
+\end{figure}
+
+Although the details of the equations are beyond the scope of this paper, essentially recursive state estimation reduces to 6 steps:
+
+\begin{enumerate}
+
+\item{In the absence of observed data at $k = 0$ the initial state estimate, ${\bf \hat x}_0$, is simply $E[{\bf x}_0]$, where ${\bf x}_0$ is the initial state and $E$ is the expectation operator that attempts to minimize mean-squared error. The posterior covariance matrix, ${\bf P}_0$, is generated based on the initial state and initial state estimate.}
+
+\item{The next partial state estimate, ${\bf \hat x}^-_k$, at time $k$ is determined by simply applying the transition matrix, ${\bf F}_{k+1,k}$, to the previous state estimate, ${\bf \hat x}_{k-1}$.}
+
+\item{The next partial posterior covariance matrix, ${\bf P}^-_k$, is calculated by transforming the previous posterior covariance matrix, ${\bf P}_{k-1}$, using the transition matrix and then adding in the Gaussian process noise component, ${\bf Q}_k$.}
+
+\item{The Kalman gain factor, ${\bf G}_k$, is calculated by transforming the next posterior covariance matrix by the measurement matrix, ${\bf H}_k$, and dividing it by the transform of the next posterior covariance matrix with the measurement matrix summed with the Gaussian measurement noise component, ${\bf R}_k$.}
+
+\item{The Kalman gain factor is then applied to the difference between the observed state, ${\bf y}_k$, and the estimated observed state, $({\bf H}_k {\bf x}^-_k)$. This offset value is then added to the next state estimate to get the true next state estimate, ${\bf \hat x}_k$. The offset value is used for measurement correction.}
+
+\item{The true posterior covariance matrix, ${\bf P}_k$, is then calculated based on the Kalman gain factor, measurement matrix, and partial posterior covariance matrix.}
+
+\item{Steps 2-6 are then repeated to estimate the state for the next iteration.}
+
+\end{enumerate}
+
 
 
 \subsection{Extended Kalman Filter}
+
+The extended Kalman filter (EKF) can approximate non-linear motion by approximating linear motion at each time step. The state space model is linearized at each time instant around the most recent state estimate. Standard Kalman filter equations are then applied to the linear model and the process shown in Figure \ref{fig:stateestimation} is performed \cite{kalman}.
+
+The process equation now becomes:
+
+\begin{equation}
+{\bf x}_{k+1} = {\bf f}(k,{\bf x}_k) + {\bf w}_k
+\label{eq:ekfprocess}
+\end{equation}
+\vspace{0.01cm}
+
+${\bf f}(k,{\bf x}_k)$ is a function representing a non-linear transition matrix that may be time-variant. \\ 
+The measurement equation becomes:
+
+\begin{equation}
+{\bf y}_{k} = {\bf h}(k,{\bf x}_k) + {\bf v}_k
+\label{eq:ekfmeasure}
+\end{equation}
+\vspace{0.01cm}
+
+Similarly, ${\bf h}(k,{\bf x}_k)$ is a function representing a non-linear measurement matrix that may be time-variant. We construct the transition matrix from time $k$ to time $k+1$ as:
+
+\begin{equation}
+{\bf F}_{k,k+1}  = \frac{\partial{\bf f}(k,{\bf x}_k)}{\partial {\bf x}} \Bigl \vert _{{\bf x} = {\bf \hat x}_k}
+\label{eq:ekfprocesspartial}
+\end{equation}
+\vspace{0.01cm}
+
+The matrix is equal to the partial derivative of the transition function with respect to state ${\bf x}$ evaluated over the most recent state estimate, ${\bf \hat x}_k$. We construct the measurement matrix for time $k$ as:
+
+\begin{equation}
+{\bf H}_{k}  = \frac{\partial{\bf h}(k,{\bf x}_k)}{\partial {\bf x}} \Bigl \vert _{{\bf x} = {\bf \hat x}^-_k}
+\label{eq:ekfmeasurepartial}
+\end{equation}
+\vspace{0.01cm}
+
+The matrix is equal to the partial derivative of the measurement function with respect to state ${\bf x}$ evaluated over the most recent partial state estimate, ${\bf \hat x}^-_k$. Once ${\bf F}_{k,k+1} $ and ${\bf H}_{k}$ are known, we can employ a first-order Taylor series approximation to calculate ${\bf x}_{k+1}$ and ${\bf y}_k$ (see \cite{kalman} for details). Step 2 of the recursive state estimation process shown in Figure \ref{fig:stateestimation} is not update to account for Equations \ref{eq:ekfprocesspartial} and \ref{eq:ekfmeasurepartial}. The updated process is shown in Figure \ref{fig:ekfstateestimation}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[scale=.5]{img/ekfstateestimation.jpg}
+\caption{Flow chart showing how the extended Kalman filter can be used for recursive state estimation. Image taken from \cite{kalman}.}
+\label{fig:ekfstateestimation}
+\end{figure}
 
 
 
