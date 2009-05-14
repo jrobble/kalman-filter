@@ -363,10 +363,83 @@ This rationale is supported by the face-detection research of Viola and Jones in
 
 
 
+\subsubsection{Basic Test Cases}
+Our initial testing consisted of four test cases.  Each test case involved tracking a single uniformly colored ball through a predefined motion function.  The tracking was performed both with and without occlusion.  The four cases were: horizontal motion, parabolic motion, sinusoidal motion, and a final test tracking three disparate objects across all three motion paths with occlusion at the same time.  Mathematical motion models were used so that we could accurately compare the tracked path to the actual path of motion.  Success for each test case was defined as having less than $5\%$ deviation from the true path, taking into account a margin of range equal to the diameter of the ball, and where deviations only occur due to occlusion.  If the final position of the tracked ball was not properly registered by our system the test was considered an immediate failure.  
+
+
+
+\begin{figure}[H]
+\centering
+\includegraphics[scale=.45]{img/CombinedPath.jpg}
+\caption{Path comparisons all three basic test cases}
+\label{fig:PathComparisons}
+\end{figure}
+
+
+As evidenced in Figure \ref{fig:PathComparisons}, all three of our basic test cases were successful.  Our initial particle filter was able to track objects across occlusion with extremely limited deviation.  It is worth noting that the deviation in the path is an artifact of the Brownian Motion used to generate new potential particles and not an error in the system.  If a simple curve-fitting algorithm were to be applied, the resulting paths would be nearly identical to the predefined mathematical motion paths.  
+
+The final basic test case was to track multiple objects at once during a scene.  This introduces more occlusion as well as more potential targeting errors.  For our multiple object test, we tracked a red, green, and blue ball across horizontal, parabolic, and sinusoidal motion through an occluding white square.  
+
+\begin{figure}[H]
+\centering
+\includegraphics[scale=0.45]{img/MixedComparison.jpg}
+\caption{Path tracking for three distinct objects.}
+\label{fig:MultipleTracking}
+\end{figure}
+
+As shown in Figure \ref{fig:MultipleTracking}, again our results were successful.  All three objects were tracked successfully through the scene without failure.  We initiated a series of empirical tests to identify how similar the object's color distributions would have to be in order for our algorithm to fail under the ideal conditions we've set up and discovered that a minimum Euclidean distance of $\approx 0.7$ is necessary to guarantee that solid colored objects will not be mistaken for each other.  Considering that our algorithm uses the Bhattacharyya distance metric which responds to color histograms, a solid color object is one of the more difficult things to track and this value for minimum distance between two colors is acceptable for our purposes.  
+
+\subsubsection{Complicated Test Cases}
+
+The next stage of testing consisted of tracking a human figure in a video.  We used the student video mentioned earlier to test our results.  Initial tracking results were underwhelming.  Our algorithm performed best tracking faces due to the high variation in the color histograms for each person, but lost track of its target often.  Most of the failures were the result of another section of the image being mistaken for the target.  Tracking of the clothing did not work as well because of the lack of variation for many of the subjects' attire.  Solid colors are the easiest thing for our algorithm to mistake while tracking.  Since the video takes place under consistant lighting conditions we can assume that this error is an artifact of video quality.  To combat this, we attempted to track an entire person rather than a small region of that person using two different approaches: applying spring forces to multiple particle systems and using a hierarchical particle filter.  
+
+
+
 \section{Multiple Particle Systems}
 \label{sec:multparticlesys}
 
-The next goal was to track an entire person. Although we could simply track a person's face using a single representative point between the eyes, we decided to go for a more robust approach that would allow use to track more of a person's body. The most intuitive way to do this is to use multiple particle systems to track multiple points over a person's body. In the simplest case, one particle system would track a person's face and another particle system would be positioned below the first to track a person's torso. The primary issue with this approach is linking these particle systems together. Heuristically, we know that the center of a person's torso is located directly below a person's face by about 1.5 - 2 lengths of that person's head. To take advantage of this relative positional relationship between particle systems, we applied the use of spring forces between target points.
+Although we could simply track a person's face using a single representative point between the eyes, we decided to go for a more robust approach for tracking people that would allow us to track more of a person's body. The most intuitive way to do this is to use multiple particle systems to track multiple points over a person's body. In the simplest case, one particle system would track a person's face and another particle system would be positioned below the first to track a person's torso. The primary issue with this approach is linking these particle systems together. Heuristically, we know that the center of a person's torso is located directly below a person's face by about 1.5 - 2 lengths of that person's head. To take advantage of this relative positional relationship between particle systems, we applied the use of spring forces between target points.
+
+
+\subsection{Spring Coefficient Linking}
+The spring force equations are defined by Hooke's Law for the potential energy of a spring:
+
+\begin{equation}
+U = \frac{1}{2}kx^(2)
+\label{eq:Hooke's Law}
+\end{equation}
+
+This equation identifies a growing exponential force relative to the distance $x$ between two points, as shown in Figure \ref{fig:SpringModel}, and scaled by the spring coefficient $k$.  
+
+\begin{figure}[H]
+\centering
+\includegraphics[scale=0.4]{img/springMan.jpg}
+\caption{Spring particle set model.}
+\label{fig:SpringModel}
+\end{figure}
+
+In our algorithm, multiple particle sets are constrained using this force.  The initial distance between two targets is assumed to be a constant that we wish to maintain.  As the particle sets are tracked through the frames, if the distance between a potential particle and the target particle for its constrained particle set is larger than the initial distance plus some threshold, $S_t$, the inverse of the spring force is used as a scaling factor for that particle's cumulative probability.
+
+\begin{equation}
+ c^i_{k-1} = c^{i-1}_{k-1} + b^i_{k-1} * \frac{1}{U} 
+\label{eq:bprob}
+\end{equation}  
+
+The introduction of this scaling factor allows for groups of particle sets to restrain a single particle set that may mistarget.  This works very well under systems that have a predefined hierarchical order for reliability of each particle set.  
+
+In our system, we used multiple particle sets to track the face, chest, torso, and legs of a specific user.  This showed significant results when applied to the student video.  
+ 
+\begin{figure}[H]
+\centering
+\includegraphics[scale=0.3]{img/SpringResults.jpg}
+\caption{Spring particle set tracking.}
+\label{fig:SpringTracking}
+\end{figure}
+
+In Figure \ref{fig:SpringTracking} you can see the path tracking results for tracking these four sets.  Magenta results are for the face, cyan for the chest, red for the torso, and blue for the jeans.  In the course of our testing the face detection jumped from our target to a background character, but the spring force between the face and torso pulled the magenta path back towards our target.  This new model worked much better for occlusion with similar objects, but introduced a new type of error: particle set convergence.  
+
+Our spring forces caused the target points of each particle set to be weighted towards convergence with each other.  While this scenario did not aversely affect our results in tracking, it meant that we lost the tracking of the specific parts of the object and retained overlayed tracking of the most identifiable region for the whole.  We've attempted to apply a reverse spring force to combat this, but the additional parameters have non-trivial inter-dependancies on each other. Application of reverse spring forces will require significant empirical study before becoming usable.  
+
 
 
 
@@ -374,9 +447,9 @@ The next goal was to track an entire person. Although we could simply track a pe
 \section{Hierarchical Particle Filter}
 \label{sec:hybridfilter}
 
-As discussed in Section \ref{sec:particlefilter}, Viola and Jones had great success detecting faces using a rectangular window to capture the average color intensity around a person's eyes and the average color intensity of that person's upper cheeks. The major difference between Viola and Jones' approach and our single particle system approach is that their target window is capable of determining the relative position of average color intensities. Our original thought was to use multiple particle systems to track targets of varying color intensities and to constrain the relative positions of those systems using spring forces, however, as mentioned in Section \ref{multparticlesys}, doing so became quite a challenge. 
+As discussed in Section \ref{sec:particlefilter}, Viola and Jones had great success detecting faces using a rectangular window to capture the average color intensity around a person's eyes and the average color intensity of that person's upper cheeks. The major difference between Viola and Jones' approach and our single particle system approach is that their target window is capable of determining the relative position of average color intensities. Our original thought was to use multiple particle systems to track targets of varying color intensities and to constrain the relative positions of those systems using spring forces, however, as mentioned in Section \ref{sec:multparticlesys}, doing so became quite a challenge. 
 
-In order to leverage the findings of Viola and Jones, we decided to take our current particle system approach and modify it according to some of the concepts presented by Yang et al. in \cite{hybrid}. Yang et al. present a three stage hierarchical particle filter based in part on the work of Viola and Jones. In general their system tracks objects by performing a coarse to fine-grained search over a portion of an image using rectangular windows. Each stage reduces the search space even further until they are left with the window which has the highest probably of matching the target window. The first stage or their approach applies a two-region rectangular window over a greyscale image of the frame being tracked. If the average color intensities of the pixels in the two regions do not match those of the target within a predetermined threshold, then that window is discarded and not used in the next stage of the search. The primary purpose of this stage is to increase performance by reducing the number of windows and therefore search time of later stages. We do not implement this stage in our approach since the videos we are using are of such a low resolution that performance is not a major concern. The second and third stage presented by Yang et al. are discussed in Section \ref{sec:colorrects} and Section \ref{sec:edgehist}, respectively.
+In order to leverage the findings of Viola and Jones, we decided to take our current particle system approach and modify it according to some of the concepts presented by Yang, et al., in \cite{hybrid}. Yang, et al., present a three stage hierarchical particle filter based in part on the work of Viola and Jones. In general their system tracks objects by performing a coarse to fine-grained search over a portion of an image using rectangular windows. Each stage reduces the search space even further until they are left with the window which has the highest probably of matching the target window. The first stage or their approach applies a two-region rectangular window over a greyscale image of the frame being tracked. If the average color intensities of the pixels in the two regions do not match those of the target within a predetermined threshold, then that window is discarded and not used in the next stage of the search. The primary purpose of this stage is to increase performance by reducing the number of windows and therefore search time of later stages. We do not implement this stage in our approach since the videos we are using are of such a low resolution that performance is not a major concern. The second and third stage presented by Yang, et al., are discussed in Section \ref{sec:colorrects} and Section \ref{sec:edgehist}, respectively.
 
 Note that by taking the point corresponding to the upper left corner of a rectangular window oriented along the x,y plane, each window can be thought of as a particle. A particle system then becomes a collection of overlapping windows slightly offset from each other. The same frame-by-frame movement of these particles used by the particle filter discussed in Section \ref{sec:particlefilter} can be applied to these particles. The major difference concerns the equation used to calculate the probability of a particle distribution matching the target.
 
@@ -393,7 +466,7 @@ The window corresponding to each particle in the system is sub-divided in three 
 \label{fig:rectfeatures}
 \end{figure}
 
-The average color intensity for each region of a given rectangle is calculated and constitutes an element of the feature vector for that rectangle. Thus, from left to right, the rectangles in Figure \ref{fig:rectfeatures} have 2, 3, and 4 elements in their feature vectors, respectively. Note that Viola and Jones used a neural network with about a week of training to determine which rectangles worked best for face detection \cite{facedetection}. We simply choose the same rectangles as Yang et al. in \cite{hybrid} and resize them to capture the entire area of the person we wish to track.
+The average color intensity for each region of a given rectangle is calculated and constitutes an element of the feature vector for that rectangle. Thus, from left to right, the rectangles in Figure \ref{fig:rectfeatures} have 2, 3, and 4 elements in their feature vectors, respectively. Note that Viola and Jones used a neural network with about a week of training to determine which rectangles worked best for face detection \cite{facedetection}. We simply choose the same rectangles as Yang, et al. in \cite{hybrid} and resize them to capture the entire area of the person we wish to track.
 
 For a given region $R_i$, with area $A_i$, we can calculate the average color intensity.
 
@@ -443,7 +516,7 @@ The integral image for each frame is calculated once and then used to calculate 
 
 In order to address situations where color information alone is not enough to properly track an object through a scene, we consider edge information. For example, if a person wearing similar colored clothing walks in front of the person being tracked then the current approach may begin to track the new person. To prevent this phenomenon we capture the edge information of the person being tracked. If the person being tracked is standing still, then the edge information for that person will be more vertically oriented than the edge information for the person moving in front of the person being tracked. Comparing edge information is also useful if the color of the person being tracked matches colors in the background of the scene. 
 
-Yang et al. \cite{hybrid} perform edge detection by converting the color image to a greyscale image and then applying the horizontal and vertical Sobel kernels, $K_x$ and $K_y$, respectively.
+Yang, et al., \cite{hybrid} perform edge detection by converting the color image to a greyscale image and then applying the horizontal and vertical Sobel kernels, $K_x$ and $K_y$, respectively.
 
 \begin{equation}
 K_x = \left [ \begin{array}{ccc}
@@ -496,7 +569,7 @@ g_y(x,y) = G_y(x,y)/S(x,y)
 
 We calculate the $g_x$ and $g_y$ image once per frame and separate each into 10 channels where each channel can be thought of as a binary image. For example, if a pixel in $g_x$ channel 5 is assigned a value of 1 it means that pixel was placed in the fifth bin after calculating the histogram for the normalized edge strengths. Similarly to how we calculated average color intensity values for regions within a rectangular window, we can calculate the average number of pixels within a region that have been placed within a certain normalized edge strength histogram bin. To do this we can calculate the integral image for each $g_x$ and $g_y$ channel and then use the arithmetic technique illustrated in Figure \ref{fig:integralimguse}. 
 
-What we end up with is a 10 element feature vector for horizontally oriented edges and a 10 element feature vector for vertically oriented edges. We can then calculate the similarity between a candidate window and the target window using an equation similar to Equation \ref{eq:colorsimilarity} and the calculate the probability of the two being a match using an equation similar to Equation \ref{eq:colorprob}. Yang et al. state that this technique is very similar to the Scale Invariant Feature Transform (SIFT) descriptor.
+What we end up with is a 10 element feature vector for horizontally oriented edges and a 10 element feature vector for vertically oriented edges. We can then calculate the similarity between a candidate window and the target window using an equation similar to Equation \ref{eq:colorsimilarity} and the calculate the probability of the two being a match using an equation similar to Equation \ref{eq:colorprob}. Yang, et al., state that this technique is very similar to the Scale Invariant Feature Transform (SIFT) descriptor.
 
 
 \subsection{Target Update}
@@ -557,7 +630,7 @@ These regions, especially those in (c), can be used to track the face of a perso
 
 \begin{figure}[H]
 \centering
-\includegraphics[scale=2]{img/haarrectangles.jpg}
+\includegraphics[scale=1.9]{img/haarrectangles.jpg}
 \caption{Haar feature rectangles for image feature extraction. Image taken from \cite{haarpic}.}
 \label{fig:haarrectangles}
 \end{figure}
@@ -568,7 +641,7 @@ Note that Haar edge feature rectangles (a) - (e) can be used in place of the edg
 \section{Conclusion}
 \label{sec:conclusion}
 
-
+Particle filter tracking is an efficient and robust means for tracking objects.  It deals with occlusion well while maintaining a low cost through limited searching.  While the basic algorithm is less than ideal for most situations, the numerous adjustable parameters and varied implementations provide the ability to easily tune the system for specific tasks.  In the task of tracking students in a classroom, we've found that a hierarchical particle filter shows the best results, although multiple particle sets constrained by a string force also showed promise.  Given an initial target, our model is able to track that target with relative success in a variety of situations.  
 
 
 

@@ -3,9 +3,10 @@ function [] = kalman_filter(movfilestr)
 
 %parameters
 steps = -1; % [50] number of frames to track, [-1] => all
-startframe = 125; % [380] [30] starting frame
+startframe = 1; % [380] [30] [125] [536] [985] starting frame
 framenum = startframe;
 showhsv = 0;
+startframe
 
 % get user input
 numsets = input('\nEnter number of particle sets: ');

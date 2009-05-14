@@ -10,8 +10,8 @@ classdef particle_set
 
         rad = 15;  % [5] radius of circular ROI
         var = 0.2; % [0.02] variance of Gaussian used to calculate probabilities (lower is more selective)
-        origscalex = 0; % [15][10] approx. max Brownian particle x movement (pos/neg)
-        origscaley = 0; % [15][10] approx. max Brownian particle y movement (pos/neg)
+        origscalex = 50; % [15][10] approx. max Brownian particle x movement (pos/neg)
+        origscaley = 50; % [15][10] approx. max Brownian particle y movement (pos/neg)
 
         winrad = 15; % radius of small circular window around best particle in "robust mean" method
         orignumpts = 100; % [20][200][100] number of particles in system
@@ -339,7 +339,7 @@ classdef particle_set
                     % increase particle cloud size
                     fprintf(1,'>> Possible loss of target. ');
                     fprintf(1,'=> Use larger particle cloud and best particle method.\n');
-                    obj.scalex = obj.origscalex * 1.5;
+                    obj.scalex = obj.origscalex * 1.5; % 1.5
                     obj.scaley = obj.origscaley * 1.5;
                     obj.targetmethod = 2; % use "best particle" method
                     obj.oldnumpts = obj.numpts;
@@ -433,8 +433,8 @@ classdef particle_set
                     % sk1(i,2) = sk0(i,2) + ((rand()-0.2) * obj.scaley * 2); 
                     
                     [obj.posqueue,val] = obj.posqueue.mean(); % QUEUE
-                    sk1(i,1) = sk0(i,1) + val(1) + (rand()-0.5) * 5;
-                    sk1(i,2) = sk0(i,2) + val(2) + (rand()-0.5) * 5; 
+                    sk1(i,1) = sk0(i,1) + val(1) + (rand()-0.5) * 15; % 5
+                    sk1(i,2) = sk0(i,2) + val(2) + (rand()-0.5) * 15; 
                     
                     % validate
                     isvalid = (sk1(i,1) > 0) && (sk1(i,1) <= obj.imgwidth) && ...
