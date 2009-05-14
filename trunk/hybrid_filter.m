@@ -3,9 +3,10 @@ function [] = hybrid_filter(movfilestr)
 
 %parameters
 steps = -1; % [50] number of frames to track, [-1] => all
-startframe = 100; % [125][200][690][60] starting frame
+startframe = 30; % [125][200][690][60][310][536] starting frame
 framenum = startframe;
 numedgebins = 8; % per edge component
+colors = ['y','r','c','g','m'];
 
 % get user input
 numsets = input('\nEnter number of particle sets: ');
@@ -26,7 +27,7 @@ iimg = create_color_integral(img);
 [igxchans,igychans] = create_edge_integrals(img,numedgebins);
 psets(numsets) = hybrid_particle_set;
 for i = 1:numsets
-   psets(i) = hybrid_particle_set(steps);
+   psets(i) = hybrid_particle_set(steps,colors(i));
    psets(i) = psets(i).initialize(img,iimg,numedgebins,igxchans,igychans);
 end
 

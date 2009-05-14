@@ -3,12 +3,12 @@
 classdef hybrid_particle_set
     
     properties
-        colorsd = 10; % standard deviation of color probability
-        edgesd = 0.5; % standard deviation of edge probability
-        origxvar = 10;
-        origyvar = 10;
+        colorsd = 20; % [10] standard deviation of color probability
+        edgesd = 0.5; % [0.5] standard deviation of edge probability
+        origxvar = 10; % [10]
+        origyvar = 10; % [10]
 
-        orignumpts = 100; % [1000] number of particles in system
+        orignumpts = 200; % [1000] number of particles in system
         postostore = 3;
         
         % tracking variables
@@ -32,12 +32,13 @@ classdef hybrid_particle_set
         tgymodel = [];
         numedgebins = [];
         posqueue = [];
+        color = [];
     end
     
     methods
         
         % constructor must be able to handle the no input case for object array pre-allocation
-        function obj = hybrid_particle_set(steps)
+        function obj = hybrid_particle_set(steps,color)
             obj.islost = false;
             obj.numpts = obj.orignumpts;
             obj.oldnumpts = obj.numpts;
@@ -46,6 +47,7 @@ classdef hybrid_particle_set
             obj.posqueue = circular_queue(obj.postostore);
             if nargin > 0
                 obj.steps = steps;
+                obj.color = color;
             end
         end
         
@@ -90,7 +92,7 @@ classdef hybrid_particle_set
             % initialize candidate pool
             candidates = 1:obj.numpts;
             [obj.posqueue,val] = obj.posqueue.mean();
-            val
+            % val % DEBUG
             
             % update candidates
             for i = candidates
@@ -110,9 +112,15 @@ classdef hybrid_particle_set
 
                 % handle color model
                 colorp = -1;
-                if ~isempty(h2cmodel) && ~isempty(h3cmodel) && ~isempty(h4cmodel) % particle not out of bounds
-                   tk = [obj.t2cmodel',obj.t3cmodel',obj.t4cmodel'];
-                   hk = [h2cmodel',h3cmodel',h4cmodel'];
+                if ~isempty(h2cmodel) && ...
+                   ~isempty(h3cmodel) && ~isempty(h4cmodel) % particle not out of bounds
+                   
+                   tk = [obj.t3cmodel',obj.t4cmodel'];
+                   hk = [h3cmodel',h4cmodel'];
+                    
+                   % tk = [obj.t2cmodel',obj.t3cmodel',obj.t4cmodel'];
+                   % hk = [h2cmodel',h3cmodel',h4cmodel'];
+                   
                    rho = (tk-hk).^2;
                    rho = sum(rho,2);
                    rho = sum(rho);
@@ -120,7 +128,7 @@ classdef hybrid_particle_set
                    colorp = exp(-(rho.^2)/obj.colorsd^2);
                 end
                 obj.sk(i,5) = colorp;
-                obj.sk(i,5) = colorp % DEBUG
+                % obj.sk(i,5) = colorp % DEBUG
                 obj.sk(i,7) = colorp;
             end
             
@@ -188,11 +196,14 @@ classdef hybrid_particle_set
             bestindex = candidates(end);
             bestp = obj.sk(bestindex,7);
             
-            for i = 1:obj.numpts
-               fprintf('%d: %d %d %d\n',i,obj.sk(i,5),obj.sk(i,6),obj.sk(i,7)); 
-            end
+            % DEBUG
+            % for i = 1:obj.numpts
+            %   fprintf('%d: %d %d %d\n',i,obj.sk(i,5),obj.sk(i,6),obj.sk(i,7)); 
+            % end
             
-            bestindex
+            % bestindex % DEBUG
+            fprintf(1,'pc: %5.5d pe: %5.5d pm: %5.5d\n', ...
+                obj.sk(bestindex,5),obj.sk(bestindex,6),obj.sk(bestindex,7));
             bestp
             
             %{
@@ -222,20 +233,25 @@ classdef hybrid_particle_set
             newtgymodel = obj.calc_quad_feature_model(obj.tpos,igychans,obj.numedgebins);
             
             obj.t2cmodel = (bestp * newt2cmodel) + ((1-bestp) * obj.t2cmodel);
+            
+            % DEBUG - no updates
             obj.t3cmodel = (bestp * newt3cmodel) + ((1-bestp) * obj.t3cmodel);
             obj.t4cmodel = (bestp * newt4cmodel) + ((1-bestp) * obj.t4cmodel);
-            
             obj.tgxmodel = (bestp * newtgxmodel) + ((1-bestp) * obj.tgxmodel);
             obj.tgymodel = (bestp * newtgymodel) + ((1-bestp) * obj.tgymodel);
-            obj.tgxmodel = newtgxmodel;
-            obj.tgymodel = newtgymodel;
+            
+            % obj.t2cmodel = newt2cmodel;
+            % obj.t3cmodel = newt3cmodel;
+            % obj.t4cmodel = newt4cmodel;
+            % obj.tgxmodel = newtgxmodel;
+            % obj.tgymodel = newtgymodel;
             
             % mark-up the image after determining points
             obj = obj.mark_up(step);
             islost = obj.islost;
         end
         
-        
+        %{
         function [fmodel] = calc_feature_model(obj,pos,iimg,numf)
             % one rectangular region
             width  = round(pos(3));
@@ -289,216 +305,229 @@ classdef hybrid_particle_set
 
             fmodel = [q1k];
         end
+        %}
         
         
         function [fmodel] = calc_duel_feature_model(obj,pos,iimg,numf)
-            % divide into 2 (vert-oriented) equal-sized quadrants
-            width  = round(pos(3));
-            height = round(pos(4)/2);
-            pos = round(pos);
+            try
+                % divide into 2 (vert-oriented) equal-sized quadrants
+                width  = round(pos(3));
+                height = round(pos(4)/2);
+                pos = round(pos);
 
-            q1pos = [pos(1)+width, pos(2)+height,   width, height];
-            q2pos = [pos(1)+width, pos(2)+2*height, width, height];
-            qpos = [q1pos;q2pos];
+                q1pos = [pos(1)+width, pos(2)+height,   width, height];
+                q2pos = [pos(1)+width, pos(2)+2*height, width, height];
+                qpos = [q1pos;q2pos];
 
-            % check region validity
-            for i = 1:size(qpos,1)
-                if qpos(i,1) < 2 || qpos(i,2) < 2 || ...
-                   qpos(i,1) - width > obj.imgwidth - 1 || qpos(i,2) - height > obj.imgheight - 1 
-                    fmodel = [];
-                    return;
+                % check region validity
+                for i = 1:size(qpos,1)
+                    if qpos(i,1) < 2 || qpos(i,2) < 2 || ...
+                       qpos(i,1) - width > obj.imgwidth - 1 || qpos(i,2) - height > obj.imgheight - 1 
+                        fmodel = [];
+                        return;
+                    end
                 end
-            end
 
-            % update region bounds if necessary
-            for i = 1:size(qpos,1)
-                if qpos(i,1) > obj.imgwidth
-                   qpos(i,2) = qpos(1,2) - (qpos(i,1) - obj.imgwidth); 
-                   qpos(i,1) = obj.imgwidth;
+                % update region bounds if necessary
+                for i = 1:size(qpos,1)
+                    if qpos(i,1) > obj.imgwidth
+                       qpos(i,2) = qpos(1,2) - (qpos(i,1) - obj.imgwidth); 
+                       qpos(i,1) = obj.imgwidth;
+                    end
+                    if qpos(i,2) > obj.imgheight
+                       qpos(i,4) = qpos(1,4) - (qpos(i,2) - obj.imgheight); 
+                       qpos(i,2) = obj.imgheight; 
+                    end
                 end
-                if qpos(i,2) > obj.imgheight
-                   qpos(i,4) = qpos(1,4) - (qpos(i,2) - obj.imgheight); 
-                   qpos(i,2) = obj.imgheight; 
+
+                q1pos(1:4) = qpos(1,1:4);
+                q2pos(1:4) = qpos(2,1:4);
+
+                q1sum = iimg(q1pos(2)-1,q1pos(1)-1,:);
+                q2sum = iimg(q2pos(2)-1,q2pos(1)-1,:);
+
+                q1k = q1sum;
+                q2k = q2sum-q1sum;
+
+                % get rid of upper left data outside of ROI
+                if pos(1) > 1 % not along left side
+                    q1k(1:numf) = q1k(1:numf) - iimg(q1pos(2)-1,        q1pos(1)-q1pos(3), 1:numf);
+                    q2k(1:numf) = q2k(1:numf) - iimg(q2pos(2)-1,        q2pos(1)-q2pos(3), 1:numf);
+                    q2k(1:numf) = q2k(1:numf) + iimg(q2pos(2)-q2pos(4), q2pos(1)-q2pos(3), 1:numf);
                 end
+                if pos(2) > 1 % not along upper side
+                    q1k(1:numf) = q1k(1:numf) - iimg(q1pos(2)-q1pos(4), q1pos(1)-1,        1:numf);
+                end
+                if pos(1) > 1 && pos(2) > 1
+                    q1k(1:numf) = q1k(1:numf) + iimg(q1pos(2)-q1pos(4), q1pos(1)-q1pos(3), 1:numf);
+                end
+
+                tmpq1k(1:numf) = q1k(:,:,1:numf)/(q1pos(3)*q1pos(4));
+                tmpq2k(1:numf) = q2k(:,:,1:numf)/(q2pos(3)*q2pos(4));
+
+                q1k = tmpq1k;
+                q2k = tmpq2k;
+
+                fmodel = [q1k;q2k];
+            catch ME
+                fmodel = []; 
             end
-
-            q1pos(1:4) = qpos(1,1:4);
-            q2pos(1:4) = qpos(2,1:4);
-
-            q1sum = iimg(q1pos(2)-1,q1pos(1)-1,:);
-            q2sum = iimg(q2pos(2)-1,q2pos(1)-1,:);
-
-            q1k = q1sum;
-            q2k = q2sum-q1sum;
-
-            % get rid of upper left data outside of ROI
-            if pos(1) > 1 % not along left side
-                q1k(1:numf) = q1k(1:numf) - iimg(q1pos(2)-1,        q1pos(1)-q1pos(3), 1:numf);
-                q2k(1:numf) = q2k(1:numf) - iimg(q2pos(2)-1,        q2pos(1)-q2pos(3), 1:numf);
-                q2k(1:numf) = q2k(1:numf) + iimg(q2pos(2)-q2pos(4), q2pos(1)-q2pos(3), 1:numf);
-            end
-            if pos(2) > 1 % not along upper side
-                q1k(1:numf) = q1k(1:numf) - iimg(q1pos(2)-q1pos(4), q1pos(1)-1,        1:numf);
-            end
-            if pos(1) > 1 && pos(2) > 1
-                q1k(1:numf) = q1k(1:numf) + iimg(q1pos(2)-q1pos(4), q1pos(1)-q1pos(3), 1:numf);
-            end
-
-            tmpq1k(1:numf) = q1k(:,:,1:numf)/(q1pos(3)*q1pos(4));
-            tmpq2k(1:numf) = q2k(:,:,1:numf)/(q2pos(3)*q2pos(4));
-
-            q1k = tmpq1k;
-            q2k = tmpq2k;
-
-            fmodel = [q1k;q2k];
         end
         
         
         function [fmodel] = calc_tri_feature_model(obj,pos,iimg,numf)
-            % divide into 3 (horz-oriented) equal-sized quadrants
-            width  = round(pos(3)/3);
-            height = round(pos(4));
-            pos = round(pos);
+            try
+                % divide into 3 (horz-oriented) equal-sized quadrants
+                width  = round(pos(3)/3);
+                height = round(pos(4));
+                pos = round(pos);
 
-            q1pos = [pos(1)+width,   pos(2)+height, width, height];
-            q2pos = [pos(1)+2*width, pos(2)+height, width, height];
-            q3pos = [pos(1)+3*width, pos(2)+height, width, height];
-            qpos = [q1pos;q2pos;q3pos];
+                q1pos = [pos(1)+width,   pos(2)+height, width, height];
+                q2pos = [pos(1)+2*width, pos(2)+height, width, height];
+                q3pos = [pos(1)+3*width, pos(2)+height, width, height];
+                qpos = [q1pos;q2pos;q3pos];
 
-            % check region validity
-            for i = 1:size(qpos,1)
-                if qpos(i,1) < 2 || qpos(i,2) < 2 || ...
-                   qpos(i,1) - width > obj.imgwidth - 1 || qpos(i,2) - height > obj.imgheight - 1 
-                    fmodel = [];
-                    return;
+                % check region validity
+                for i = 1:size(qpos,1)
+                    if qpos(i,1) < 2 || qpos(i,2) < 2 || ...
+                       qpos(i,1) - width > obj.imgwidth - 1 || qpos(i,2) - height > obj.imgheight - 1 
+                        fmodel = [];
+                        return;
+                    end
                 end
-            end
 
-            % update region bounds if necessary
-            for i = 1:size(qpos,1)
-                if qpos(i,1) > obj.imgwidth
-                   qpos(i,2) = qpos(1,2) - (qpos(i,1) - obj.imgwidth); 
-                   qpos(i,1) = obj.imgwidth;
+                % update region bounds if necessary
+                for i = 1:size(qpos,1)
+                    if qpos(i,1) > obj.imgwidth
+                       qpos(i,2) = qpos(1,2) - (qpos(i,1) - obj.imgwidth); 
+                       qpos(i,1) = obj.imgwidth;
+                    end
+                    if qpos(i,2) > obj.imgheight
+                       qpos(i,4) = qpos(1,4) - (qpos(i,2) - obj.imgheight); 
+                       qpos(i,2) = obj.imgheight; 
+                    end
                 end
-                if qpos(i,2) > obj.imgheight
-                   qpos(i,4) = qpos(1,4) - (qpos(i,2) - obj.imgheight); 
-                   qpos(i,2) = obj.imgheight; 
+
+                q1pos(1:4) = qpos(1,1:4);
+                q2pos(1:4) = qpos(2,1:4);
+                q3pos(1:4) = qpos(3,1:4);
+
+                q1sum = iimg(q1pos(2)-1,q1pos(1)-1,:);
+                q2sum = iimg(q2pos(2)-1,q2pos(1)-1,:);
+                q3sum = iimg(q3pos(2)-1,q3pos(1)-1,:);
+
+                q1k = q1sum;
+                q2k = q2sum-q1sum;
+                q3k = q3sum-q1sum;
+
+                % get rid of upper left data outside of ROI
+                if pos(1) > 1 % not along left side
+                    q1k(1:numf) = q1k(1:numf) - iimg(q1pos(2)-1,        q1pos(1)-q1pos(3), 1:numf);
                 end
+                if pos(2) > 1 % not along upper side
+                    q1k(1:numf) = q1k(1:numf) - iimg(q1pos(2)-q1pos(4), q1pos(1)-1,        1:numf);
+                    q2k(1:numf) = q2k(1:numf) - iimg(q2pos(2)-q2pos(4), q2pos(1)-1,        1:numf);
+                    q2k(1:numf) = q2k(1:numf) + iimg(q2pos(2)-q2pos(4), q2pos(1)-q2pos(3), 1:numf);
+                    q3k(1:numf) = q3k(1:numf) - iimg(q3pos(2)-q3pos(4), q3pos(1)-1,        1:numf);
+                    q3k(1:numf) = q3k(1:numf) + iimg(q3pos(2)-q3pos(4), q3pos(1)-q3pos(3), 1:numf);
+                end
+                if pos(1) > 1 && pos(2) > 1
+                    q1k(1:numf) = q1k(1:numf) + iimg(q1pos(2)-q1pos(4), q1pos(1)-q1pos(3), 1:numf);
+                end
+
+                tmpq1k(1:numf) = q1k(:,:,1:numf)/(q1pos(3)*q1pos(4));
+                tmpq2k(1:numf) = q2k(:,:,1:numf)/(q2pos(3)*q2pos(4));
+                tmpq3k(1:numf) = q3k(:,:,1:numf)/(q3pos(3)*q3pos(4));
+
+                q1k = tmpq1k;
+                q2k = tmpq2k;
+                q3k = tmpq3k;
+
+                fmodel = [q1k;q2k;q3k];
+            catch ME
+                fmodel = []; 
             end
-
-            q1pos(1:4) = qpos(1,1:4);
-            q2pos(1:4) = qpos(2,1:4);
-            q3pos(1:4) = qpos(3,1:4);
-
-            q1sum = iimg(q1pos(2)-1,q1pos(1)-1,:);
-            q2sum = iimg(q2pos(2)-1,q2pos(1)-1,:);
-            q3sum = iimg(q3pos(2)-1,q3pos(1)-1,:);
-
-            q1k = q1sum;
-            q2k = q2sum-q1sum;
-            q3k = q3sum-q1sum;
-
-            % get rid of upper left data outside of ROI
-            if pos(1) > 1 % not along left side
-                q1k(1:numf) = q1k(1:numf) - iimg(q1pos(2)-1,        q1pos(1)-q1pos(3), 1:numf);
-            end
-            if pos(2) > 1 % not along upper side
-                q1k(1:numf) = q1k(1:numf) - iimg(q1pos(2)-q1pos(4), q1pos(1)-1,        1:numf);
-                q2k(1:numf) = q2k(1:numf) - iimg(q2pos(2)-q2pos(4), q2pos(1)-1,        1:numf);
-                q2k(1:numf) = q2k(1:numf) + iimg(q2pos(2)-q2pos(4), q2pos(1)-q2pos(3), 1:numf);
-                q3k(1:numf) = q3k(1:numf) - iimg(q3pos(2)-q3pos(4), q3pos(1)-1,        1:numf);
-                q3k(1:numf) = q3k(1:numf) + iimg(q3pos(2)-q3pos(4), q3pos(1)-q3pos(3), 1:numf);
-            end
-            if pos(1) > 1 && pos(2) > 1
-                q1k(1:numf) = q1k(1:numf) + iimg(q1pos(2)-q1pos(4), q1pos(1)-q1pos(3), 1:numf);
-            end
-
-            tmpq1k(1:numf) = q1k(:,:,1:numf)/(q1pos(3)*q1pos(4));
-            tmpq2k(1:numf) = q2k(:,:,1:numf)/(q2pos(3)*q2pos(4));
-            tmpq3k(1:numf) = q3k(:,:,1:numf)/(q3pos(3)*q3pos(4));
-
-            q1k = tmpq1k;
-            q2k = tmpq2k;
-            q3k = tmpq3k;
-
-            fmodel = [q1k;q2k;q3k];
         end
         
         
         function [fmodel] = calc_quad_feature_model(obj,pos,iimg,numf)
-            % divide into 4 equal-sized quadrants
-            width  = round(pos(3)/2);
-            height = round(pos(4)/2);
-            pos = round(pos);
+            try
+                % divide into 4 equal-sized quadrants
+                width  = round(pos(3)/2);
+                height = round(pos(4)/2);
+                pos = round(pos);
 
-            q1pos = [pos(1)+width,   pos(2)+height,   width, height];
-            q2pos = [pos(1)+2*width, pos(2)+height,   width, height];
-            q3pos = [pos(1)+width,   pos(2)+2*height, width, height];
-            q4pos = [pos(1)+2*width, pos(2)+2*height, width, height];
-            qpos = [q1pos;q2pos;q3pos;q4pos];
+                q1pos = [pos(1)+width,   pos(2)+height,   width, height];
+                q2pos = [pos(1)+2*width, pos(2)+height,   width, height];
+                q3pos = [pos(1)+width,   pos(2)+2*height, width, height];
+                q4pos = [pos(1)+2*width, pos(2)+2*height, width, height];
+                qpos = [q1pos;q2pos;q3pos;q4pos];
 
-            % check region validity
-            for i = 1:size(qpos,1)
-                if qpos(i,1) < 2 || qpos(i,2) < 2 || ...
-                   qpos(i,1) - width > obj.imgwidth - 1 || qpos(i,2) - height > obj.imgheight - 1 
-                    fmodel = [];
-                    return;
+                % check region validity
+                for i = 1:size(qpos,1)
+                    if qpos(i,1) < 2 || qpos(i,2) < 2 || ...
+                       qpos(i,1) - width > obj.imgwidth - 1 || qpos(i,2) - height > obj.imgheight - 1 
+                        fmodel = [];
+                        return;
+                    end
                 end
-            end
 
-            % update region bounds if necessary
-            for i = 1:size(qpos,1)
-                if qpos(i,1) > obj.imgwidth
-                   qpos(i,2) = qpos(1,2) - (qpos(i,1) - obj.imgwidth); 
-                   qpos(i,1) = obj.imgwidth;
+                % update region bounds if necessary
+                for i = 1:size(qpos,1)
+                    if qpos(i,1) > obj.imgwidth
+                       qpos(i,2) = qpos(1,2) - (qpos(i,1) - obj.imgwidth); 
+                       qpos(i,1) = obj.imgwidth;
+                    end
+                    if qpos(i,2) > obj.imgheight
+                       qpos(i,4) = qpos(1,4) - (qpos(i,2) - obj.imgheight); 
+                       qpos(i,2) = obj.imgheight; 
+                    end
                 end
-                if qpos(i,2) > obj.imgheight
-                   qpos(i,4) = qpos(1,4) - (qpos(i,2) - obj.imgheight); 
-                   qpos(i,2) = obj.imgheight; 
+
+                q1pos(1:4) = qpos(1,1:4);
+                q2pos(1:4) = qpos(2,1:4);
+                q3pos(1:4) = qpos(3,1:4);
+                q4pos(1:4) = qpos(4,1:4);
+
+                q1sum = iimg(q1pos(2)-1,q1pos(1)-1,:);
+                q2sum = iimg(q2pos(2)-1,q2pos(1)-1,:);
+                q3sum = iimg(q3pos(2)-1,q3pos(1)-1,:);
+                q4sum = iimg(q4pos(2)-1,q4pos(1)-1,:);
+
+                q1k = q1sum;
+                q2k = q2sum-q1sum;
+                q3k = q3sum-q1sum;
+                q4k = (q4sum+q1sum)-(q2sum+q3sum); % contains no excess
+
+                % get rid of upper left data outside of ROI
+                if pos(1) > 1 % not along left side
+                    q1k(1:numf) = q1k(1:numf) - iimg(q1pos(2)-1,        q1pos(1)-q1pos(3), 1:numf);
+                    q3k(1:numf) = q3k(1:numf) - iimg(q3pos(2)-1,        q3pos(1)-q3pos(3), 1:numf);
+                    q3k(1:numf) = q3k(1:numf) + iimg(q3pos(2)-q3pos(4), q3pos(1)-q3pos(3), 1:numf);
                 end
+                if pos(2) > 1 % not along upper side
+                    q1k(1:numf) = q1k(1:numf) - iimg(q1pos(2)-q1pos(4), q1pos(1)-1,        1:numf);
+                    q2k(1:numf) = q2k(1:numf) - iimg(q2pos(2)-q2pos(4), q2pos(1)-1,        1:numf);
+                    q2k(1:numf) = q2k(1:numf) + iimg(q2pos(2)-q2pos(4), q2pos(1)-q2pos(3), 1:numf);
+                end
+                if pos(1) > 1 && pos(2) > 1
+                    q1k(1:numf) = q1k(1:numf) + iimg(q1pos(2)-q1pos(4), q1pos(1)-q1pos(3), 1:numf);
+                end
+
+                tmpq1k(1:numf) = q1k(:,:,1:numf)/(q1pos(3)*q1pos(4));
+                tmpq2k(1:numf) = q2k(:,:,1:numf)/(q2pos(3)*q2pos(4));
+                tmpq3k(1:numf) = q3k(:,:,1:numf)/(q3pos(3)*q3pos(4));
+                tmpq4k(1:numf) = q4k(:,:,1:numf)/(q4pos(3)*q4pos(4));
+
+                q1k = tmpq1k;
+                q2k = tmpq2k;
+                q3k = tmpq3k;
+                q4k = tmpq4k;
+
+                fmodel = [q1k;q2k;q3k;q4k];
+            catch ME
+                fmodel = [];
             end
-
-            q1pos(1:4) = qpos(1,1:4);
-            q2pos(1:4) = qpos(2,1:4);
-            q3pos(1:4) = qpos(3,1:4);
-            q4pos(1:4) = qpos(4,1:4);
-
-            q1sum = iimg(q1pos(2)-1,q1pos(1)-1,:);
-            q2sum = iimg(q2pos(2)-1,q2pos(1)-1,:);
-            q3sum = iimg(q3pos(2)-1,q3pos(1)-1,:);
-            q4sum = iimg(q4pos(2)-1,q4pos(1)-1,:);
-
-            q1k = q1sum;
-            q2k = q2sum-q1sum;
-            q3k = q3sum-q1sum;
-            q4k = (q4sum+q1sum)-(q2sum+q3sum); % contains no excess
-
-            % get rid of upper left data outside of ROI
-            if pos(1) > 1 % not along left side
-                q1k(1:numf) = q1k(1:numf) - iimg(q1pos(2)-1,        q1pos(1)-q1pos(3), 1:numf);
-                q3k(1:numf) = q3k(1:numf) - iimg(q3pos(2)-1,        q3pos(1)-q3pos(3), 1:numf);
-                q3k(1:numf) = q3k(1:numf) + iimg(q3pos(2)-q3pos(4), q3pos(1)-q3pos(3), 1:numf);
-            end
-            if pos(2) > 1 % not along upper side
-                q1k(1:numf) = q1k(1:numf) - iimg(q1pos(2)-q1pos(4), q1pos(1)-1,        1:numf);
-                q2k(1:numf) = q2k(1:numf) - iimg(q2pos(2)-q2pos(4), q2pos(1)-1,        1:numf);
-                q2k(1:numf) = q2k(1:numf) + iimg(q2pos(2)-q2pos(4), q2pos(1)-q2pos(3), 1:numf);
-            end
-            if pos(1) > 1 && pos(2) > 1
-                q1k(1:numf) = q1k(1:numf) + iimg(q1pos(2)-q1pos(4), q1pos(1)-q1pos(3), 1:numf);
-            end
-
-            tmpq1k(1:numf) = q1k(:,:,1:numf)/(q1pos(3)*q1pos(4));
-            tmpq2k(1:numf) = q2k(:,:,1:numf)/(q2pos(3)*q2pos(4));
-            tmpq3k(1:numf) = q3k(:,:,1:numf)/(q3pos(3)*q3pos(4));
-            tmpq4k(1:numf) = q4k(:,:,1:numf)/(q4pos(3)*q4pos(4));
-
-            q1k = tmpq1k;
-            q2k = tmpq2k;
-            q3k = tmpq3k;
-            q4k = tmpq4k;
-
-            fmodel = [q1k;q2k;q3k;q4k];
         end
             
         
@@ -538,12 +567,12 @@ classdef hybrid_particle_set
             % if ~obj.islost % only record good targets
                 obj.oldtpos(end+1,:) = obj.tpos(:);
             % end
-            for i = 1:size(obj.oldtpos)
-               obj.graphics(gcount) = rectangle('Position',obj.tpos,'LineWidth',1,'EdgeColor','r'); % DEBUG
-               gcount = gcount + 1;
-            end
+            % for i = 1:size(obj.oldtpos)
+            %   obj.graphics(gcount) = rectangle('Position',obj.tpos,'LineWidth',1,'EdgeColor','r'); % DEBUG
+            %   gcount = gcount + 1;
+            % end
 
-            obj.graphics(gcount) = rectangle('Position',obj.tpos,'LineWidth',1,'EdgeColor','y'); % DEBUG 
+            obj.graphics(gcount) = rectangle('Position',obj.tpos,'LineWidth',1,'EdgeColor',obj.color); % DEBUG 'y' 
             % drawnow; % bottleneck  
         end
         
