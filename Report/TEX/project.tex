@@ -1,4 +1,4 @@
-\documentclass[12pt]{article}
+\documentclass[11pt]{article}
 \usepackage{fullpage, graphicx, float}
 \usepackage[page]{appendix}
 \usepackage{extramarks}
@@ -51,8 +51,43 @@ One of the major reasons we considered using rectangular windows is because they
 In Section \ref{sec:kalmanfilter} we present the theory behind the Kalman filter and the EKF. Then we present the particle filter in Section \ref{sec:particlefilter}. In Section \ref{sec:multparticlesys} we present our approach to handling multiple particle systems using spring forces and the issues we encountered. Then in Section \ref{sec:hybridfilter} we discuss a Viola and Jones inspired particle filter approach using rectangular windows for feature extraction based on the work of Yang, et al. \cite{hybrid}. Finally we consider areas for future research in Section \ref{sec:future} and conclude in Section \ref{sec:conclusion}.
   
 
+
 \section{Kalman Filter}
 \label{sec:kalmanfilter}
+
+The Kalman filter is used to solve recursive state estimation problems in non-linear dynamic systems where it is necessary to estimate the state of a system based on its previous state. Consider the following process equation that describes the behavior of the system in question (note that all equations in this section are taken from \cite{kalman}):
+
+\begin{equation}
+{\bf x}_{k+1} = {\bf F}_{k+1} {\bf x}_k + {\bf w}_k
+\label{eq:process}
+\end{equation}
+\vspace{0.01cm}
+
+${\bf F}_{k+1}$ is the transition matrix that describes the transition of state ${\bf x}$ at time $k$ to time $k + 1$. ${\bf w}_k$ is additive, white, Gaussian process noise with zero mean and zero off-diagonal covariances.  
+
+Now consider the following measurement equation used to measure the change in behavior of the system under observation:
+
+\begin{equation}
+{\bf y}_{k} = {\bf H}_{k} {\bf x}_k + {\bf v}_k
+\label{eq:measure}
+\end{equation}
+\vspace{0.01cm}
+
+${\bf H}_{k}$ is the measurement matrix that maps the true space onto the observed space and ${\bf y}_{k}$ is the observed state of the true state ${\bf x}$ at time $k$. ${\bf v}_k$ is additive, white, Gaussian measurement noise with zero mean and zero off-diagonal covariances.  
+
+We can represent a linear discrete-time dynamical system as a flow chart shown in \mbox{Figure \ref{fig:kalmanflow}}.
+
+ \begin{figure}[H]
+\centering
+\includegraphics[scale=.4]{img/KalmanFlow.jpg}
+\caption{Flow chart showing the various components of a linear discrete-time dynamical system. Image taken from \cite{kalman}.}
+\label{fig:kalmanflow}
+\end{figure}
+
+The Kalman filtering problem is defined as optimally solving the process equation and measurement equation for an unknown state. Using the observed data for all of the previous iterations, ${\bf y}_1, {\bf y}_2, \dots, {\bf y}_k$ for $k \geq 1$, we attempt to find the minimum mean-square error estimate of ${\bf x}_k$. Note that the state ${\bf x}$ at time $k = 0$ is known. 
+
+Consider that we are concerned with finding ${\bf x}_i$ for the current time $k$. If $i = k$ then we are trying to draw a conclusion about ${\bf x}$ based on the current state of the world and all observed data. This is known as a filtering problem, such as object tracking. If $i > k$ then we are trying to predict a future state, so we have a prediction problem. If $1 \leq i \leq k$ then we are trying to determine the state based on some prior and subsequent information, so we have a smoothing problem.
+
 
 \subsection{Extended Kalman Filter}
 
@@ -142,7 +177,7 @@ Note that by taking the point corresponding to the upper left corner of a rectan
 
 The window corresponding to each particle in the system is sub-divided in three different ways to calculate color feature. These features are in turn used to determine the particle's similarity to the target particle. The three rectangles shown in Figure \ref{fig:rectfeatures} are used to sub-divide each window.
 
- \begin{figure}[H]
+\begin{figure}[H]
 \centering
 \includegraphics[scale=.4]{img/RectFeatures.jpg}
 \caption{Rectangles used for calculating color features.}
