@@ -90,7 +90,7 @@ Consider that we are concerned with finding ${\bf x}_i$ for the current time $k$
 
 \begin{figure}[H]
 \centering
-\includegraphics[scale=.5]{img/stateestimation.jpg}
+\includegraphics[scale=.6]{img/stateestimation.jpg}
 \caption{Flow chart showing how the Kalman filter can be used for recursive state estimation. Image taken from \cite{kalman}.}
 \label{fig:stateestimation}
 \end{figure}
@@ -119,9 +119,7 @@ Although the details of the equations are beyond the scope of this paper, essent
 
 \subsection{Extended Kalman Filter}
 
-The extended Kalman filter (EKF) can approximate non-linear motion by approximating linear motion at each time step. The state space model is linearized at each time instant around the most recent state estimate. Standard Kalman filter equations are then applied to the linear model and the process shown in Figure \ref{fig:stateestimation} is performed \cite{kalman}.
-
-The process equation now becomes:
+The extended Kalman filter (EKF) can approximate non-linear motion by approximating linear motion at each time step. The state space model is linearized at each time instant around the most recent state estimate. Standard Kalman filter equations are then applied to the linear model and the process shown in Figure \ref{fig:stateestimation} is performed \cite{kalman}. The process equation now becomes:
 
 \begin{equation}
 {\bf x}_{k+1} = {\bf f}(k,{\bf x}_k) + {\bf w}_k
@@ -158,7 +156,7 @@ The matrix is equal to the partial derivative of the measurement function with r
 
 \begin{figure}[H]
 \centering
-\includegraphics[scale=.5]{img/ekfstateestimation.jpg}
+\includegraphics[scale=.6]{img/ekfstateestimation.jpg}
 \caption{Flow chart showing how the extended Kalman filter can be used for recursive state estimation. Image taken from \cite{kalman}.}
 \label{fig:ekfstateestimation}
 \end{figure}
@@ -168,7 +166,9 @@ The matrix is equal to the partial derivative of the measurement function with r
 \section{Particle Filter}
 \label{sec:particlefilter}
 
-The Extended Kalman Filter inspired ...  \\
+The extended Kalman filter inspired the development of the particle filter for tracking objects in video. The particle filter presented by Cuevas,  Zaldivar, and Rojas attempts to track a small color distribution within a circular window centered around a target pixel \cite{particle}. All of the equations in this section are taken from their paper. 
+
+Since we are most concerned with particles concentrated near the center of the window region, we assign a lower priority to pixels further away from the center. To do this we employ following equation where $e$ is the radial distance between a current pixel under consideration and the window center: 
 
 \begin{equation}
 k(e) = \begin{cases}
@@ -178,33 +178,43 @@ k(e) = \begin{cases}
 \label{eq:kdist}
 \end{equation} \\
 
-The color distribution $p_y = \{p_y^{(u)}\}_{u = 1,2,3 \dots m}$ at location $y$ is calculated as
+We represent the color distribution within the circular region as $p_y = \{p_y^{(u)}\}_{u = 1,2,3 \dots m}$, where $u$ is a histogram bin assignment. Note that each bin corresponds to a combination of color components, for example 3 components in RGB color space. We calculate the value for each color distribution bin, $u$, within a circular region, $I$, centered at location $y$  as:
 
 \begin{equation}
 p_y^{(u)} = f \cdotp \sum^I_{i=1} k \left ( \frac{| {\bf y} - {\bf x}^i|}{r} \right ) \delta [h({\bf x^i})-u]
 \label{eq:cdist}
 \end{equation} \\
 
-Where the normalization factor $f$ is
+$r$ is the radius of the circular region, ${\bf x}^i$ is a pixel within $I$, and $h$ is a function that assigns pixel ${\bf x}^i$ histogram bins according to the current target color model. We call this assignment the color profile for pixel ${\bf x}^i$. $\delta[ \text{ } \cdotp]$ is the Kronecker delta function. It returns 1 when the color profile of pixel ${\bf x}^i$ matches that of $u$ and 0 otherwise.
+
+The normalization factor $f$ is calculated as:
 
 \begin{equation}
 f = \frac{1}{\sum^I_{i=1} k \left ( \frac{| {\bf y} - {\bf x}^i|}{r} \right )}
 \label{eq:normfact}
 \end{equation} \\
 
-To measure the similarity between two color distributions we use the Bhattacharyya coefficient
+To measure, $\rho$, the similarity between two color distributions, $p$ and $q$, we use the Bhattacharyya coefficient:
 
 \begin{equation}
 \rho[p,q] = \sum^m_{u=1} \sqrt{ (p^{(u)} q^{(u)}) } 
 \label{eq:bcoeff}
 \end{equation} \\
 
-The larger $\rho$ is, the more similar two distributions are. Given a particle distribution $S_k^i$, we calculate the probability, $b$, of it being the target model, $q$
+The larger $\rho$ is, the more similar two distributions are. Given a set of particles (i.e. pixels in the image), $S_k$, at time $k$, we calculate the probability, $b$, of each particle, $S^i_k$, being the target particle, $q$:
 
 \begin{equation}
 b^i = \frac{1}{\sqrt{2\pi\rho}} \text{ exp } \left ( - \frac{(1-\rho[p_{S_k^i},q])}{2\sigma} \right )
 \label{eq:bprob}
 \end{equation} \\
+
+$\sigma$ is a variance determined by the user. The smaller the variance, the more selective the particle filter will be about choosing the particle that most closely matches the target pixel. Setting the variance too low will result in very small probabilities and will make it hard to track the target particle. Setting the variance too high will result in a greater probability of choosing a non-optimal particle as the target particle match. 
+
+The particle filter algorithm employs these equations and proceeds according to the \mbox{following steps}:
+
+\begin{enumerate}
+\item{adfads}
+\end{enumerate}
 
 
 \subsection{Target Update}
