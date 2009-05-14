@@ -339,7 +339,7 @@ The robust mean method takes the weighted mean of all particles in the set withi
 \label{fig:robustmean}
 \end{figure}
 
-In general the robust mean method works better than the weighted mean and best particle methods. The major reason why it is better than the weight mean method  is because the resulting target will be located near another particle in the system. This reduces the probability that the target location will be in an undesirable region where the color distribution does not match that of the original target, as shown by the worst case scenario in Figure \ref{fig:weightedmean} where the new target is estimated to be at the specular highlight in the center of the red orb. The robust mean method often works better than the best particle method because the probability that the resulting target will jump large distances from its previous location due to the impact of outlying particles is reduced by averaging. The worst case scenario in Figure \ref{fig:bestparticle} shows the undesirable effect of outlying particles when using the best particle method. We chose to implement our particle system using the robust mean method.
+In general the robust mean method works better than the weighted mean and best particle methods. It is better than the weight mean method because the resulting target will be located near another particle in the system. This reduces the probability that the target location will be in an undesirable region where the color distribution does not match that of the original target, as shown by the worst case scenario in Figure \ref{fig:weightedmean} where the new target is estimated to be at the specular highlight in the center of the red orb. The robust mean method often works better than the best particle method because the probability that the resulting target will jump large distances from its previous location due to the impact of outlying particles is reduced by averaging. The worst case scenario in Figure \ref{fig:bestparticle} shows the undesirable effect of outlying particles when using the best particle method. We implement our particle system using the robust mean~method.
 
 
 
@@ -351,7 +351,15 @@ We have had decent success tracking these points frame-by-frame in videos consis
 
 After these simple tests we used the same approach to track faces in the student video. Following some trial-and-error experimentation we determined that the best results were obtained when we selected the target point within the space between a person's eyes. This makes sense because the window around the target point will capture a lot of the variation in a person's face, including eye color, eyebrow color, and skin tone, and incorporate all of it into the target point color histogram profile. If we the made the window around the target point large enough we would also capture part of the person's head hair and incorporate that into the color histogram profile. 
 
-This rationale is supported by the face-detection research of Viola and Jones in \cite{facedetection}. Viola and Jones discovered that the majority of faces in images could be detected by placing a rectangular window around a person's eyes and upper cheeks. This rectangle is then horizontally subdivided into two parts to capture the person's eyes and upper cheeks, respectively. The average color intensity of the pixels captures by the upper sub-rectangle would almost always be less than the average color intensity of the pixels in the lower sub-rectangle.  
+This rationale is supported by the face-detection research of Viola and Jones in \cite{facedetection}. Viola and Jones discovered that the majority of faces in images could be detected by placing a rectangular window around a person's eyes and upper cheeks, as shown in Figure \ref{fig:facedetection}. This rectangle is then horizontally subdivided into two parts to capture the person's eyes and upper cheeks, respectively. The average color intensity of the pixels captures by the upper sub-rectangle would almost always be less than the average color intensity of the pixels in the lower sub-rectangle. These kinds of rectangles are also known as Haar feature rectangles \cite{haar}.
+
+
+\begin{figure}[H]
+\centering
+\includegraphics[scale=.55]{img/facedetection.jpg}
+\caption{Example of using feature rectangles for face detection. Image taken from \cite{facedetection}.}
+\label{fig:facedetection}
+\end{figure}
 
 
 
@@ -422,7 +430,7 @@ Depending on the number and distribution of particles in the system, the same im
 
 The integral image for each frame is calculated once and then used to calculate the color features for each of the three rectangles for each particle in the system. Using the integral image increases performance because it drastically reduces the total number of particle summations that need to be performed. One can use the integral image to determine the summation of pixel intensities for a given region by adding and subtracting the values of other regions. An example is shown in Figure \ref{fig:integralimguse}.
 
- \begin{figure}[H]
+\begin{figure}[H]
 \centering
 \includegraphics[scale=.4]{img/IntegralImageUse.jpg}
 \caption{Example integral image use. Pixel 1 is equal to the summation of all of the pixels in region $A$. Pixel 2 is equal to the summation of all of the pixels in region $A+B$. Pixel 3 is equal to the summation of all of the pixels in region $A+C$. Pixel 4 is equal to the summation of all of the pixels in region $A+B+C+D$. The summation of pixel intensities for region $D$ can be calculated as $4+1-(2+3)$  Based on a figure from \cite{facedetection}.}
@@ -510,16 +518,58 @@ In order to handle slight variations in color (such as changes in lighting condi
 Equation \ref{eq:nextcolormodel} simply calculates the next frame's color model by multiplying the newly determined target's color model times the probability that the new target matches the old target. This value is then added to the product of multiplying the old target's color model times the probability that the new target does not match the old target. Equation \ref{eq:nextedgemodel} does the same for the edge histogram model. In practice this update scheme works well because when the person being tracked becomes occluded $p_m$ is very low, thus almost no alteration is made to the color model or edge model and the particle position does not change. Hence, the tracking window maintains its position over the person being tracked during the occlusion.  
 
 
+\subsection{Results}
+
+Figure \ref{fig:hybridresult1} and \ref{fig:hybridresult2} show some results of tracking people in the classroom scene using this approach.
+
+\begin{figure}[H]
+\centering
+\includegraphics[scale=.23]{img/hybrid1.jpg}
+\caption{Result of the hierarchical particle filter used to track four people in the classroom scene.}
+\label{fig:hybridresult1}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[scale=.23]{img/hybrid2.jpg}
+\caption{Result of the hierarchical particle filter used to track five people in the classroom scene.}
+\label{fig:hybridresult2}
+\end{figure}
+
+In Figure \ref{fig:hybridresult1} we are able to track the student inside the yellow bounding box as he moves in front of the student in the red bounding box. The student in the red bounding box is still being tracked in the rightmost frame even after temporary occlusion by the other student.  Figure \ref{fig:hybridresult2} shows some issues with our hierarchical hybrid filter implementation. In the center frame we can see that the student in the yellow bounding box has essentially ``pushed" the red bounding box to the left off of the now-occluded student. Also, in the center frame we can see that the magenta bounding box is no longer capturing the face of the student being tracked. This is because the color features are strongly impacted by the color of the student's pants and shirt and the flesh-tone of the student's face falls out in the averaging process. In the rightmost frame we can see that the student who was originally in the yellow bounding box has ``pushed" more bounding boxes away from their original targets. Also, we can see that the yellow bounding box has found a new target. Originally the yellow bounding box was capturing some of the darker flesh-tone if its original target's arm. In the rightmost frame the target student has turned more of his back to the camera and his arm was lost. Instead particle system associated with the yellow bounding box picks up on the brown shirt of the rightmost student because of its similarity to the flesh-tone of the original target student.
+
 
 \section{Future Considerations}
 \label{sec:future}
 
 Currently the size of the tracking window is constant over the period of time in which a person is being tracked. It would desirable for the window to expand and shrink as the person being tracked moves towards and away from the camera and takes up more and less of the frame area, respectively. We attempted to randomly alter the window width and height for each particle in the particle set slightly to address this. We then observed that for a person walking horizontally across the screen the window would often expand to capture the person's previous position as well as old positions, often increasing in two to three times its original width. Clearly this is undesirable, so the modification was removed from our implementation.
 
+To increase the overall accuracy of the hierarchical particle filter approach, one may consider using regions within the rectangular window that do not occupy the entire window space, as shown in Figure \ref{fig:partialregions}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[scale=.4]{img/partialregions.jpg}
+\caption{Feature rectangle regions that do not occupy the full rectangular window space. Used by Viola and Jones for face detection. Image taken from \cite{facedetection}.}
+\label{fig:partialregions}
+\end{figure}
+
+These regions, especially those in (c), can be used to track the face of a person in a scene. The rectangular features used for face detection can be combined with other rectangular features for tracking people. Since these regions only occupy a small area of the rectangular window they can be used to detect more precise features, however, they are more likely to fail in the presence of small changes, noise, or partial occlusion Additionally, one may consider using various combinations of Haar feature rectangles \cite{haar} \cite{haar2}, as shown in Figure \ref{fig:haarrectangles}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[scale=2]{img/haarrectangles.jpg}
+\caption{Haar feature rectangles for image feature extraction. Image taken from \cite{haarpic}.}
+\label{fig:haarrectangles}
+\end{figure}
+
+Note that Haar edge feature rectangles (a) - (e) can be used in place of the edge histogram orientation features discussed in Section \ref{sec:edgehist}. The benefit of doing so is that the entire image would not need to be processed with a Sobel filter into multiple channels, instead only a specific region of the image would need to be processed, thus reducing computation costs. Note that different combinations of feature rectangles can be used for tracking different types of objects. The types of rectangles and the order in which they should be applied is application specific.   
 
 
 \section{Conclusion}
 \label{sec:conclusion}
+
+
+
 
 
 \newpage
